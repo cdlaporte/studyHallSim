@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Study Hall Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    html, body {
+      margin: 0;
+      background: #1b1b24;
+      color: #ddd;
+      font-family: "Press Start 2P", monospace;
+    }
+    main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px;
+      gap: 10px;
+    }
+    canvas {
+      width: 960px;
+      max-width: calc(100vw - 24px);
+      height: auto;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      border: 4px solid #000;
+      box-shadow: 0 0 0 4px #444;
+      outline: none;
+    }
+    .help {
+      font-size: 10px;
+      line-height: 1.8;
+      text-align: center;
+      color: #aaa;
+    }
+    kbd {
+      display: inline-block;
+      padding: 2px 5px;
+      border: 2px solid #777;
+      background: #333;
+      color: #fff;
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <canvas id="game" width="960" height="720" tabindex="0"></canvas>
+    <div class="help">
+      <kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> move &nbsp;
+      <kbd>A</kbd> "Phone away!" &nbsp;
+      <kbd>S</kbd> "Shhh!" &nbsp;
+      <kbd>P</kbd> pause &nbsp;
+      <kbd>M</kbd> mute &nbsp;
+      <kbd>Enter</kbd> start
+    </div>
+  </main>
+  <script src="game.js"></script>
+</body>
+</html>
