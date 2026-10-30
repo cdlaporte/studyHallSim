@@ -192,7 +192,7 @@ const STUDENT_BACK = [
   'ssssssss',
   'kssssssk',
 ];
-// Red and gray striped quarter-zip, collar down, undershirt peeking out
+// Navy and gray striped quarter-zip, collar down, undershirt peeking out
 const TEACHER_BODY = [
   '.kgkkgk.',
   '..dddd..',
@@ -269,7 +269,7 @@ const HAIRS = ['#2c1b10', '#5a3825', '#a0522d', '#e6c35c', '#151515', '#b5651d',
 const SHIRTS = ['#e74c3c', '#3498db', '#2ecc71', '#9b59b6', '#f39c12', '#1abc9c', '#e84393', '#34495e', '#fdcb6e', '#6c5ce7'];
 
 const LAPORTE_PAL = {
-  h: '#6b4423', k: '#f6cfa6', g: '#222', d: '#9c7458', r: '#b5302a', y: '#8f9399', c: '#a3a7ad', w: '#ffffff',
+  h: '#6b4423', k: '#f6cfa6', g: '#222', d: '#9c7458', r: '#24395e', y: '#8f9399', c: '#a3a7ad', w: '#ffffff',
   z: '#d0d4d6', p: '#3b3b58', b: '#111',
 };
 const teacherSprites = TEACHER_HEADS.map((head) => makeSprite([...head, ...TEACHER_BODY], LAPORTE_PAL));
@@ -291,7 +291,7 @@ const ICONS = {
   pen: icon(['......rr', '.....rrr', '....rrr.', '...rrr..', '..rrr...', '.ggr....', '.gg.....', 'k.......'], { r: '#c0392b', g: '#ecf0f1', k: '#222' }),
   desk: icon(['........', '.wwww...', '.wwww...', 'bbbbbbbb', 'bbbbbbbb', '.b....b.', '.b....b.', '.b....b.'], { w: '#ffffff', b: '#a0703d' }),
   voice: icon(['......y.', '....yyy.', '..yyyyy.', 'yyyyyyy.', 'yyyyyyy.', '..yyyyy.', '....yyy.', '......y.'], { y: '#f1c40f' }),
-  hand: icon(['..k.k...', '.kkkkk..', '.kkkkk.k', '.kkkkkkk', '.kkkkkk.', '..kkkk..', '..kkkk..', '..ssss..'], { k: '#f6cfa6', s: '#b5302a' }),
+  hand: icon(['..k.k...', '.kkkkk..', '.kkkkk.k', '.kkkkkkk', '.kkkkkk.', '..kkkk..', '..kkkk..', '..ssss..'], { k: '#f6cfa6', s: '#24395e' }),
   badge: icon(['...yy...', '...yy...', 'yyyyyyyy', '.yyyyyy.', '..yyyy..', '.yyyyyy.', '.yy..yy.', 'y......y'], { y: '#f39c12' }),
   music: icon(['...kkkkk', '...kkkkk', '...k...k', '...k...k', '...k...k', '.kkk.kkk', 'kkkkkkkk', '.kk..kk.'], { k: '#9b59b6' }),
   zen: icon(['...gg...', '..gggg..', '.gggggg.', 'gggggggg', '.gggggg.', '..gggg..', '...gg...', '...gg...'], { g: '#2ecc71' }),
@@ -312,7 +312,7 @@ const ICONS = {
   apple: icon(['....g...', '...gg...', '.rr.rr..', 'rrrrrrr.', 'rrwrrrr.', 'rrrrrrr.', '.rrrrr..', '..r.r...'], { r: '#e74c3c', g: '#27ae60', w: '#ffffff' }),
   stress: icon(['..oooo..', '.oooooo.', 'oowooooo', 'oooooooo', 'oooooooo', 'oooooooo', '.oooooo.', '..oooo..'], { o: '#e67e22', w: '#ffffff' }),
   clipboard: icon(['..kkkk..', '.bkkkkb.', '.bwwwwb.', '.bwkkwb.', '.bwwwwb.', '.bwkkwb.', '.bwwwwb.', '.bbbbbb.'], { b: '#a0703d', k: '#7f8c8d', w: '#ffffff' }),
-  cutout: icon(['..hhhh..', '.hkkkkh.', '.kkkkkk.', '..dddd..', '.ccwwcc.', '.rrrrrr.', '...bb...', '.bbbbbb.'], { h: '#6b4423', k: '#f6cfa6', d: '#9c7458', c: '#a3a7ad', r: '#b5302a', w: '#ffffff', b: CUTOUT_BOARD }),
+  cutout: icon(['..hhhh..', '.hkkkkh.', '.kkkkkk.', '..dddd..', '.ccwwcc.', '.rrrrrr.', '...bb...', '.bbbbbb.'], { h: '#6b4423', k: '#f6cfa6', d: '#9c7458', c: '#a3a7ad', r: '#24395e', w: '#ffffff', b: CUTOUT_BOARD }),
   memo: icon(['.......w', '.....www', '...wwwgw', '.wwwwgw.', 'wwwwgw..', '...wgw..', '....ww..', '.....w..'], { w: '#ffffff', g: '#bdc3c7' }),
   pizza: icon(['cccccccc', 'yyryyyry', '.yyyyyy.', '.yryyry.', '..yyyy..', '..yryy..', '...yy...', '...y....'], { c: '#d35400', y: '#f4d03f', r: '#c0392b' }),
   tonic: icon(['...kk...', '...gg...', '..gggg..', '.gggggg.', '.gwwwwg.', '.gwggwg.', '.gwwwwg.', '.gggggg.'], { k: '#6b3e1f', g: '#27ae60', w: '#ffffff' }),
@@ -473,7 +473,7 @@ function setupLevel(n) {
   principal = {
     phase: 'away', next: cfg.principalFirst + rand(0, 8), warn: 0,
     x: -40, y: 0, path: [], idx: 0, facing: 0, pause: 0, lookT: 0, baseFacing: 0,
-    suspicion: 0, side: 'left', walkT: 0, hold: 0, blind: 0, leaving: false,
+    suspicion: 0, side: 'left', walkT: 0, hold: 0, blind: 0, leaving: false, alert: null,
   };
   for (const it of run.items) {
     it.cdLeft = 0;
@@ -799,13 +799,7 @@ const ITEM_USE = {
     }
     if (pr.phase !== 'walking' || pr.leaving) { say('Nobody to fool!'); return false; }
     // She turns around and heads for the nearest door, nose in the memo
-    pr.path = navRoute(pr, { x: pr.x < W / 2 ? -24 : W + 24, y: nearestOf(H_AISLES, pr.y), h: true });
-    if (!pr.path.length) pr.path = [{ x: pr.x, y: pr.y }];
-    pr.idx = 0;
-    pr.pause = 0;
-    pr.hold = 0;
-    pr.leaving = true;
-    pr.suspicion = 0;
+    sendPrincipalOut();
     sayAt(pr, 'An urgent memo?!', 1.6);
     say('Memo for you!');
     return true;
@@ -884,7 +878,7 @@ function navRoute(from, goal) {
 }
 
 // A spot on the aisle grid close enough to deal with the problem
-function approachPoint(target) {
+function approachPoint(target, from) {
   if (target.kind === 'phone') {
     const s = target.s, t = s.table;
     if (s.seat === 0) return { x: s.x, y: lastBelow(NAV_Y, t.y), h: true };
@@ -894,7 +888,7 @@ function approachPoint(target) {
   }
   const t = target.t;
   const up = lastBelow(NAV_Y, t.y), down = firstAbove(NAV_Y, t.y);
-  return { x: t.x, y: Math.abs(ta.y - up) < Math.abs(ta.y - down) ? up : down, h: true };
+  return { x: t.x, y: Math.abs(from.y - up) < Math.abs(from.y - down) ? up : down, h: true };
 }
 
 function targetValid(target) {
@@ -920,7 +914,7 @@ function updateTA(dt) {
     }
     if (best) {
       ta.target = best;
-      ta.path = navRoute(ta, approachPoint(best));
+      ta.path = navRoute(ta, approachPoint(best, ta));
     }
   }
   if (followPath(ta, 150, dt) && ta.target) {
@@ -1139,6 +1133,7 @@ function planPrincipalRoute() {
   pr.hold = 0;
   pr.blind = 0;
   pr.leaving = false;
+  pr.alert = null;
   pr.suspicion = 0;
 }
 
@@ -1151,13 +1146,71 @@ function whatPrincipalSees() {
     return Math.abs(angleDiff(a, pr.facing)) <= VISION_HALF;
   };
   for (const s of students) {
-    if (s.phone && inCone(s)) return { x: s.x, y: s.y, reason: 'phone' };
+    if (s.phone && inCone(s)) return { x: s.x, y: s.y, reason: 'phone', s };
   }
   for (const t of tables) {
     if (!t.rowdy) continue;
-    if (inCone(t) || t.students.some(inCone)) return { x: t.x, y: t.y, reason: 'rowdy' };
+    if (inCone(t) || t.students.some(inCone)) return { x: t.x, y: t.y, reason: 'rowdy', t };
   }
   return null;
+}
+
+// Once she spots trouble you get a few seconds while she walks over.
+// Fix it in time and she lets it go; otherwise the run is over.
+const ALERT_TIME = 3.6;
+
+function sendPrincipalOut() {
+  const pr = principal;
+  pr.path = navRoute(pr, { x: pr.x < W / 2 ? -24 : W + 24, y: nearestOf(H_AISLES, pr.y), h: true });
+  if (!pr.path.length) pr.path = [{ x: pr.x, y: pr.y }];
+  pr.idx = 0;
+  pr.pause = 0;
+  pr.hold = 0;
+  pr.leaving = true;
+  pr.suspicion = 0;
+  pr.alert = null;
+}
+
+function startAlert(seen) {
+  const pr = principal;
+  const target = seen.reason === 'phone' ? { kind: 'phone', s: seen.s } : { kind: 'rowdy', t: seen.t };
+  pr.alert = { time: 0, target, x: seen.x, y: seen.y, reason: seen.reason, beeps: 0 };
+  pr.path = navRoute(pr, approachPoint(target, pr));
+  pr.idx = 0;
+  pr.pause = 0;
+  pr.hold = 0;
+  sayAt(pr, seen.reason === 'phone' ? 'Is that a PHONE?!' : 'What is all this NOISE?!', 2);
+  sfx.caught();
+}
+
+function updateAlert(dt) {
+  const pr = principal;
+  const al = pr.alert;
+  al.time += dt;
+  if (!targetValid(al.target)) {
+    sayAt(pr, 'Hmph. Carry on.', 1.8);
+    sendPrincipalOut();
+    sfx.item();
+    return;
+  }
+  if (al.time >= al.beeps * 0.9) { al.beeps++; tone(700 + al.beeps * 120, 0.12, { vol: 0.06 }); }
+  // She marches slowly over, glaring at it the whole way
+  if (pr.idx < pr.path.length) {
+    const target = pr.path[pr.idx];
+    const dx = target.x - pr.x, dy = target.y - pr.y;
+    const d = Math.hypot(dx, dy);
+    const step = 38 * dt;
+    pr.walkT += dt;
+    if (d <= step) { pr.x = target.x; pr.y = target.y; pr.idx++; }
+    else { pr.x += (dx / d) * step; pr.y += (dy / d) * step; }
+  }
+  const want = Math.atan2(al.y - pr.y, al.x - pr.x);
+  pr.facing += clamp(angleDiff(want, pr.facing), -5 * dt, 5 * dt);
+  if (al.time >= ALERT_TIME) {
+    caught = { timer: 1.2, x: al.x, y: al.y, reason: al.reason };
+    state = 'caught';
+    sfx.lose();
+  }
 }
 
 function updatePrincipal(dt) {
@@ -1177,6 +1230,8 @@ function updatePrincipal(dt) {
     if (pr.warn <= 0) pr.phase = 'walking';
     return;
   }
+
+  if (pr.alert) { updateAlert(dt); return; }
 
   // Walking her patrol route
   let desired = pr.facing;
@@ -1239,9 +1294,7 @@ function updatePrincipal(dt) {
         sayAt(pr, 'Ooh, an apple!', 2);
         sfx.item();
       } else {
-        caught = { timer: 1.8, ...seen };
-        state = 'caught';
-        sfx.caught();
+        startAlert(seen);
       }
     }
   } else {
@@ -1443,7 +1496,8 @@ function faceExpression() {
   if (state === 'title') return 'calm';
   if (state === 'caught') return 'shocked';
   if (faceEvent) return faceEvent.type;
-  if (principal.phase === 'warning' || (principal.phase === 'walking' && principal.suspicion > 0.15)) return 'shocked';
+  if (principal.phase === 'warning' || principal.alert ||
+    (principal.phase === 'walking' && principal.suspicion > 0.15)) return 'shocked';
   if (chaos >= 75) return 'furious';
   if (chaos >= 50) return 'frustrated';
   if (chaos >= 25) return 'annoyed';
@@ -1472,34 +1526,33 @@ function buildFace() {
     }
   }
   // Neck
-  for (let y = 21; y < 26; y++) row(12, 19, y, skinSh);
-  // Red and gray striped quarter-zip: undershirt in the open zip, collar folded down, zipper
-  const STRIPES = [['#b5302a', '#8e241f'], ['#8f9399', '#6e7277']]; // [color, edge shade]
+  for (let y = 21; y < 27; y++) row(12, 19, y, skinSh);
+  // Navy and gray striped quarter-zip: undershirt in the open zip, collar folded flat, zipper
+  const STRIPES = [['#24395e', '#1a2a47'], ['#8f9399', '#6e7277']]; // [color, edge shade]
   const COLLAR = '#a3a7ad', COLLAR_EDGE = '#55595f', COLLAR_FOLD = '#c6cacf';
-  const sweaterW = [5, 7, 9, 11, 12, 12, 12];
-  for (let y = 25; y < 32; y++) {
-    const hw = sweaterW[y - 25];
-    const [col, shade] = STRIPES[Math.floor((y - 25) / 2) % 2];
+  const sweaterW = [7, 9, 11, 12, 12, 12];
+  for (let y = 26; y < 32; y++) {
+    const hw = sweaterW[y - 26];
+    const [col, shade] = STRIPES[Math.floor((y - 26) / 2) % 2];
     for (let x = 0; x < 32; x++) {
       const dx = Math.abs(x + 0.5 - 16);
       if (dx <= hw) set(x, y, dx > hw - 1.5 ? shade : col);
     }
   }
-  row(14, 17, 23, '#d5dbdf');
-  row(14, 17, 24, '#ecf0f1');
-  row(14, 17, 25, '#ecf0f1');
-  row(15, 16, 26, '#ecf0f1');
-  // Collar lying flat, its points running down beside the opening
-  const collarL = [[23, 9, 13], [24, 10, 13], [25, 11, 13], [26, 12, 13], [27, 13, 13]];
+  row(13, 18, 25, '#d5dbdf');
+  row(14, 17, 26, '#ecf0f1');
+  row(15, 16, 27, '#ecf0f1');
+  // Collar lying flat on the chest, its points running down beside the opening
+  const collarL = [[26, 10, 13], [27, 11, 13], [28, 12, 13], [29, 13, 13]];
   for (const [y, x0, x1] of collarL) {
-    const c = y === 23 ? COLLAR_FOLD : COLLAR;
+    const c = y === 26 ? COLLAR_FOLD : COLLAR;
     row(x0, x1, y, c);
     row(31 - x1, 31 - x0, y, c);
     set(x0, y, COLLAR_EDGE);
     set(31 - x0, y, COLLAR_EDGE);
   }
-  set(15, 27, '#d0d4d6'); set(16, 27, '#d0d4d6');
-  for (let y = 28; y < 32; y++) { set(15, y, '#3a3d42'); set(16, y, '#b9bec2'); }
+  set(15, 28, '#d0d4d6'); set(16, 28, '#d0d4d6');
+  for (let y = 29; y < 32; y++) { set(15, y, '#3a3d42'); set(16, y, '#b9bec2'); }
   // Ears
   for (const [ex, sh] of [[6, 7], [25, 24]]) {
     for (let y = 13; y <= 16; y++) set(ex, y, skin);
@@ -1771,6 +1824,14 @@ function drawCutoutZone() {
   ctx.restore();
 }
 
+// Orange, then red, then flashing red while she marches over: [cone fill, cone edge, solid]
+function alertColors() {
+  const f = principal.alert.time / ALERT_TIME;
+  if (f < 0.33) return ['rgba(230,126,34,0.35)', 'rgba(211,84,0,0.9)', '#e67e22'];
+  if (f < 0.66 || Math.floor(gameTime * 10) % 2) return ['rgba(231,76,60,0.42)', 'rgba(192,57,43,0.95)', '#e74c3c'];
+  return ['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.9)', '#ffffff'];
+}
+
 function drawCone() {
   const pr = principal;
   if (pr.phase !== 'walking') return;
@@ -1779,6 +1840,7 @@ function drawCone() {
   const blind = pr.blind > 0 || pr.leaving;
   ctx.fillStyle = blind ? 'rgba(180,180,180,0.18)' : alert ? 'rgba(231,76,60,0.28)' : 'rgba(255,221,87,0.28)';
   ctx.strokeStyle = blind ? 'rgba(150,150,150,0.5)' : alert ? 'rgba(192,57,43,0.8)' : 'rgba(214,170,30,0.8)';
+  if (pr.alert) [ctx.fillStyle, ctx.strokeStyle] = alertColors();
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(pr.x, pr.y);
@@ -1938,10 +2000,23 @@ function drawOverheads() {
   }
 
   // Principal's reaction
-  if (pr.phase === 'walking' && (pr.suspicion > 0 || state === 'caught')) {
-    const isCaught = state === 'caught';
-    const b = bubble(pr.x, pr.y - 30, 8 * P, 9 * P, isCaught ? '#e74c3c' : '#fff');
-    text(isCaught ? '!' : '?', b.x + 4 * P + 1, b.y + 8, 12, isCaught ? '#fff' : '#c0392b', 'center', false);
+  if (pr.phase === 'walking' && pr.alert && !speeches.some((sp) => sp.who === pr)) {
+    const solid = alertColors()[2];
+    const b = bubble(pr.x, pr.y - 30, 8 * P, 9 * P, solid === '#ffffff' ? '#e74c3c' : solid);
+    text('!', b.x + 4 * P + 1, b.y + 8, 12, '#fff', 'center', false);
+  } else if (pr.phase === 'walking' && pr.suspicion > 0 && !pr.alert) {
+    const b = bubble(pr.x, pr.y - 30, 8 * P, 9 * P, '#fff');
+    text('?', b.x + 4 * P + 1, b.y + 8, 12, '#c0392b', 'center', false);
+  }
+  if (pr.alert && state === 'playing') {
+    const al = pr.alert;
+    ctx.save();
+    ctx.strokeStyle = alertColors()[2];
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(al.x, al.y, al.reason === 'phone' ? 26 : 70, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   if (state === 'caught') {
@@ -1963,7 +2038,7 @@ function drawEffectStrip() {
   if (fx.chair > 0) labels.push([`ROLLING CHAIR ${Math.ceil(fx.chair)}`, '#2c3e50']);
   if (fx.clipboard > 0) labels.push([`CLIPBOARD ${Math.ceil(fx.clipboard)}`, '#a0703d']);
   if (cutout) labels.push([`CUTOUT ${Math.ceil(cutout.t)}`, '#8a6a3a']);
-  if (principal.leaving) labels.push(['READING MEMO', '#7d3c98']);
+  if (principal.leaving) labels.push(['PRINCIPAL LEAVING', '#7d3c98']);
   if (fx.stress > 0) labels.push([`ZEN ${Math.ceil(fx.stress)}`, '#27ae60']);
   if (ta) labels.push([`TA ${Math.ceil(ta.t)}`, '#e67e22']);
   if (!labels.length) return;
@@ -2002,6 +2077,7 @@ function drawHUD() {
   const pr = principal;
   let status = 'ALL CLEAR', col = '#7f8c8d';
   if (pr.phase === 'warning') { status = 'INCOMING!'; col = Math.floor(gameTime * 6) % 2 ? '#e74c3c' : '#ffd166'; }
+  else if (pr.alert) { status = 'SHE SAW IT!'; col = Math.floor(gameTime * 8) % 2 ? '#e74c3c' : '#fff'; }
   else if (pr.phase === 'walking') { status = 'ON PATROL'; col = '#e74c3c'; }
   text('PRINCIPAL', 820, 12, 8, '#aaa');
   text(status, 820, 32, 8, col);
@@ -2010,6 +2086,15 @@ function drawHUD() {
 
 function drawPrincipalWarning() {
   const pr = principal;
+  if (pr.alert && state === 'playing') {
+    const left = Math.max(0, ALERT_TIME - pr.alert.time);
+    const msg = `SHE SAW THAT! FIX IT! ${left.toFixed(1)}`;
+    ctx.font = `12px ${FONT}`;
+    const w = Math.ceil(ctx.measureText(msg).width) + 36;
+    pixelBox(W / 2 - w / 2, HUD_H + 12, w, 36, alertColors()[2] === '#e67e22' ? '#d35400' : '#c0392b', '#000');
+    text(msg, W / 2, HUD_H + 24, 12, '#fff', 'center', false);
+    return;
+  }
   if (pr.phase !== 'warning') return;
   const flash = Math.floor(gameTime * 6) % 2;
   const door = pr.path[0];

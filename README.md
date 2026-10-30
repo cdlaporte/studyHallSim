@@ -15,7 +15,7 @@ The pixel font loads from Google Fonts; without internet it falls back to a mono
   - **Phone bubble**: "Phone away!"
   - **#@! bubble**: "Shhh!" If you ignore a rowdy table it gets louder (`#@!` → `#@!!` → `LOUD!`), and a LOUD table riles up the tables next to it.
 - The **CHAOS** meter rises while too much is going on at once and falls when the room is calm.
-- The **principal** shows up now and then. A banner warns you which door she's coming from. She walks the aisles and stops at corners to look around. If a phone or rowdy table stays in her vision cone for a moment, she catches it and your run is over.
+- The **principal** shows up now and then. A banner warns you which door she's coming from. She walks the aisles and stops at corners to look around. If a phone or rowdy table stays in her vision cone for a moment, she spots it: her cone turns orange, then red, then flashes while she marches over. You have about 3.5 seconds to fix it. Do it in time and she says "Hmph. Carry on." and leaves. Otherwise your run is over.
 
 ### Mr. Laporte's hair (your health)
 
