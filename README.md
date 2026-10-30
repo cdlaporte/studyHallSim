@@ -19,7 +19,7 @@ The pixel font loads from Google Fonts; without internet it falls back to a mono
 
 ### Mr. Laporte's hair (your health)
 
-The side panel shows a big pixel portrait of Mr. Laporte. Chaos stresses him out, and stress makes his hair fall out. His HAIR meter carries over from round to round for the whole run. As it drops, you can watch his hairline recede, then the horseshoe, then a few brave last strands, then nothing. His face also reacts to what's happening: calm, annoyed, frustrated, furious, shocked when the principal shows up, and happy when you win. If he runs out of hair, the run is over. He regrows a little hair between rounds.
+The side panel shows a big pixel portrait of Mr. Laporte. Chaos stresses him out, and stress makes his hair fall out. His HAIR meter carries over from round to round for the whole run. As it drops, you can watch his hairline recede, then the horseshoe, then completely bald on top. His face also reacts to what's happening: calm, annoyed, frustrated, furious, shocked when the principal shows up, and happy when you win. If he runs out of hair, the run is over. He regrows a little hair between rounds.
 
 ### Roguelike runs
 

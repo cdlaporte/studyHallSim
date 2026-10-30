@@ -192,14 +192,14 @@ const STUDENT_BACK = [
   'ssssssss',
   'kssssssk',
 ];
-// Quarter-zip sweater with the collar up and an undershirt peeking out
+// Red and gray striped quarter-zip, collar down, undershirt peeking out
 const TEACHER_BODY = [
   '.kgkkgk.',
   '..dddd..',
   '.ccwwcc.',
-  'ssszzsss',
-  'ksssszsk',
-  'kssssssk',
+  'rrrzzrrr',
+  'kyyyyyyk',
+  'krrrrrrk',
   '.pppppp.',
   '.pp..pp.',
   '.bb..bb.',
@@ -269,8 +269,8 @@ const HAIRS = ['#2c1b10', '#5a3825', '#a0522d', '#e6c35c', '#151515', '#b5651d',
 const SHIRTS = ['#e74c3c', '#3498db', '#2ecc71', '#9b59b6', '#f39c12', '#1abc9c', '#e84393', '#34495e', '#fdcb6e', '#6c5ce7'];
 
 const LAPORTE_PAL = {
-  h: '#6b4423', k: '#f6cfa6', g: '#222', d: '#9c7458', s: '#2e8b57', c: '#45b97a', w: '#ffffff', z: '#bfc5c8',
-  p: '#3b3b58', b: '#111',
+  h: '#6b4423', k: '#f6cfa6', g: '#222', d: '#9c7458', r: '#b5302a', y: '#8f9399', c: '#a3a7ad', w: '#ffffff',
+  z: '#d0d4d6', p: '#3b3b58', b: '#111',
 };
 const teacherSprites = TEACHER_HEADS.map((head) => makeSprite([...head, ...TEACHER_BODY], LAPORTE_PAL));
 const principalSprite = makeSprite(PRINCIPAL, {
@@ -291,7 +291,7 @@ const ICONS = {
   pen: icon(['......rr', '.....rrr', '....rrr.', '...rrr..', '..rrr...', '.ggr....', '.gg.....', 'k.......'], { r: '#c0392b', g: '#ecf0f1', k: '#222' }),
   desk: icon(['........', '.wwww...', '.wwww...', 'bbbbbbbb', 'bbbbbbbb', '.b....b.', '.b....b.', '.b....b.'], { w: '#ffffff', b: '#a0703d' }),
   voice: icon(['......y.', '....yyy.', '..yyyyy.', 'yyyyyyy.', 'yyyyyyy.', '..yyyyy.', '....yyy.', '......y.'], { y: '#f1c40f' }),
-  hand: icon(['..k.k...', '.kkkkk..', '.kkkkk.k', '.kkkkkkk', '.kkkkkk.', '..kkkk..', '..kkkk..', '..ssss..'], { k: '#f6cfa6', s: '#2e8b57' }),
+  hand: icon(['..k.k...', '.kkkkk..', '.kkkkk.k', '.kkkkkkk', '.kkkkkk.', '..kkkk..', '..kkkk..', '..ssss..'], { k: '#f6cfa6', s: '#b5302a' }),
   badge: icon(['...yy...', '...yy...', 'yyyyyyyy', '.yyyyyy.', '..yyyy..', '.yyyyyy.', '.yy..yy.', 'y......y'], { y: '#f39c12' }),
   music: icon(['...kkkkk', '...kkkkk', '...k...k', '...k...k', '...k...k', '.kkk.kkk', 'kkkkkkkk', '.kk..kk.'], { k: '#9b59b6' }),
   zen: icon(['...gg...', '..gggg..', '.gggggg.', 'gggggggg', '.gggggg.', '..gggg..', '...gg...', '...gg...'], { g: '#2ecc71' }),
@@ -312,7 +312,7 @@ const ICONS = {
   apple: icon(['....g...', '...gg...', '.rr.rr..', 'rrrrrrr.', 'rrwrrrr.', 'rrrrrrr.', '.rrrrr..', '..r.r...'], { r: '#e74c3c', g: '#27ae60', w: '#ffffff' }),
   stress: icon(['..oooo..', '.oooooo.', 'oowooooo', 'oooooooo', 'oooooooo', 'oooooooo', '.oooooo.', '..oooo..'], { o: '#e67e22', w: '#ffffff' }),
   clipboard: icon(['..kkkk..', '.bkkkkb.', '.bwwwwb.', '.bwkkwb.', '.bwwwwb.', '.bwkkwb.', '.bwwwwb.', '.bbbbbb.'], { b: '#a0703d', k: '#7f8c8d', w: '#ffffff' }),
-  cutout: icon(['..hhhh..', '.hkkkkh.', '.kkkkkk.', '..kddk..', '.sswwss.', '.ssssss.', '...bb...', '.bbbbbb.'], { h: '#6b4423', k: '#f6cfa6', d: '#9c7458', s: '#2e8b57', w: '#ffffff', b: CUTOUT_BOARD }),
+  cutout: icon(['..hhhh..', '.hkkkkh.', '.kkkkkk.', '..dddd..', '.ccwwcc.', '.rrrrrr.', '...bb...', '.bbbbbb.'], { h: '#6b4423', k: '#f6cfa6', d: '#9c7458', c: '#a3a7ad', r: '#b5302a', w: '#ffffff', b: CUTOUT_BOARD }),
   memo: icon(['.......w', '.....www', '...wwwgw', '.wwwwgw.', 'wwwwgw..', '...wgw..', '....ww..', '.....w..'], { w: '#ffffff', g: '#bdc3c7' }),
   pizza: icon(['cccccccc', 'yyryyyry', '.yyyyyy.', '.yryyry.', '..yyyy..', '..yryy..', '...yy...', '...y....'], { c: '#d35400', y: '#f4d03f', r: '#c0392b' }),
   tonic: icon(['...kk...', '...gg...', '..gggg..', '.gggggg.', '.gwwwwg.', '.gwggwg.', '.gwwwwg.', '.gggggg.'], { k: '#6b3e1f', g: '#27ae60', w: '#ffffff' }),
@@ -1473,29 +1473,33 @@ function buildFace() {
   }
   // Neck
   for (let y = 21; y < 26; y++) row(12, 19, y, skinSh);
-  // Quarter-zip sweater: body, undershirt in the open zip, stand-up collar, zipper
-  const SW = '#2e8b57', SW_SH = '#226b42', SW_DK = '#1d5e3a', SW_HI = '#45b97a';
+  // Red and gray striped quarter-zip: undershirt in the open zip, collar folded down, zipper
+  const STRIPES = [['#b5302a', '#8e241f'], ['#8f9399', '#6e7277']]; // [color, edge shade]
+  const COLLAR = '#a3a7ad', COLLAR_EDGE = '#55595f', COLLAR_FOLD = '#c6cacf';
   const sweaterW = [5, 7, 9, 11, 12, 12, 12];
   for (let y = 25; y < 32; y++) {
     const hw = sweaterW[y - 25];
+    const [col, shade] = STRIPES[Math.floor((y - 25) / 2) % 2];
     for (let x = 0; x < 32; x++) {
       const dx = Math.abs(x + 0.5 - 16);
-      if (dx <= hw) set(x, y, dx > hw - 1.5 ? SW_SH : SW);
+      if (dx <= hw) set(x, y, dx > hw - 1.5 ? shade : col);
     }
   }
   row(14, 17, 23, '#d5dbdf');
   row(14, 17, 24, '#ecf0f1');
   row(14, 17, 25, '#ecf0f1');
   row(15, 16, 26, '#ecf0f1');
-  for (const [x0, x1, inner] of [[9, 13, 13], [18, 22, 18]]) {
-    set(x0 === 9 ? 10 : 21, 22, SW_HI); set(x0 === 9 ? 11 : 20, 22, SW_HI);
-    row(x0, x1, 23, SW_HI);
-    row(x0, x1, 24, SW);
-    row(x0 + (x0 === 9 ? 1 : 0), x1 - (x0 === 9 ? 0 : 1), 25, SW);
-    for (let y = 23; y <= 25; y++) set(inner, y, SW_DK);
+  // Collar lying flat, its points running down beside the opening
+  const collarL = [[23, 9, 13], [24, 10, 13], [25, 11, 13], [26, 12, 13], [27, 13, 13]];
+  for (const [y, x0, x1] of collarL) {
+    const c = y === 23 ? COLLAR_FOLD : COLLAR;
+    row(x0, x1, y, c);
+    row(31 - x1, 31 - x0, y, c);
+    set(x0, y, COLLAR_EDGE);
+    set(31 - x0, y, COLLAR_EDGE);
   }
-  set(15, 27, '#c8ced1'); set(16, 27, '#c8ced1');
-  for (let y = 28; y < 32; y++) { set(15, y, SW_DK); set(16, y, '#8a9597'); }
+  set(15, 27, '#d0d4d6'); set(16, 27, '#d0d4d6');
+  for (let y = 28; y < 32; y++) { set(15, y, '#3a3d42'); set(16, y, '#b9bec2'); }
   // Ears
   for (const [ex, sh] of [[6, 7], [25, 24]]) {
     for (let y = 13; y <= 16; y++) set(ex, y, skin);
@@ -1608,10 +1612,6 @@ function buildFace() {
     if (spawned) sfx.pluck();
   }
   prevHair = visible;
-  // A few brave last strands
-  if (hairFrac > 0 && hairFrac < 0.22) {
-    for (const [x, y] of [[15, 3], [15, 2], [16, 1], [18, 3], [19, 2], [12, 3], [12, 2], [11, 1]]) set(x, y, HAIR_DK);
-  }
   // Shiny scalp once enough hair is gone
   if (hairFrac < 0.6) {
     for (const [x, y] of [[12, 6], [13, 5], [14, 5]]) if (!visible.has(y * 32 + x)) set(x, y, '#fff1dc');
