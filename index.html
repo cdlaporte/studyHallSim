@@ -21,8 +21,7 @@
       gap: 10px;
     }
     canvas {
-      width: 960px;
-      max-width: calc(100vw - 24px);
+      width: min(1260px, calc(100vw - 32px), calc((100vh - 90px) * 1.75));
       height: auto;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
@@ -48,11 +47,12 @@
 </head>
 <body>
   <main>
-    <canvas id="game" width="960" height="720" tabindex="0"></canvas>
+    <canvas id="game" width="1260" height="720" tabindex="0"></canvas>
     <div class="help">
       <kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> move &nbsp;
       <kbd>A</kbd> "Phone away!" &nbsp;
       <kbd>S</kbd> "Shhh!" &nbsp;
+      <kbd>1</kbd>-<kbd>6</kbd> items &nbsp;
       <kbd>P</kbd> pause &nbsp;
       <kbd>M</kbd> mute &nbsp;
       <kbd>Enter</kbd> start

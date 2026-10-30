@@ -1,17 +1,19 @@
 'use strict';
 
 // =====================================================================
-//  Study Hall Simulator
-//  Top-down pixel-art game: grade papers at your desk while keeping the
-//  cafeteria study hall quiet and phone-free. Don't let the principal
-//  see anything!
+//  Study Hall Simulator -- starring Mr. Laporte
+//  A top-down pixel-art roguelike: grade papers at your desk while keeping
+//  the cafeteria study hall quiet and phone-free. Chaos costs Mr. Laporte
+//  his hair. Don't let the principal see anything! Beat a level to pick a
+//  stat upgrade and an active item.
 // =====================================================================
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 
-const W = canvas.width;   // 960
+const PANEL_W = 300;      // left side panel (portrait, hair, stats, items)
+const W = 960;            // width of the cafeteria play area
 const H = canvas.height;  // 720
 const HUD_H = 64;
 const P = 3;              // size of one "pixel" in the pixel art
@@ -23,6 +25,9 @@ const ROW_Y = [160, 318, 476, 634];
 const H_AISLES = [239, 397, 555];          // between rows (also the door rows)
 const V_AISLES = [180, 330, 480, 630, 780]; // between columns
 const TEACHER_ROW = 1, TEACHER_COL = 0;    // 2nd row, 1st column
+// Walkable aisle grid used by the teaching assistant to get around
+const NAV_X = [27, 180, 330, 480, 630, 780, 933];
+const NAV_Y = [86, 239, 397, 555, 703];
 
 const TABLE_R = 32;
 const SEAT_D = 46;
@@ -37,6 +42,10 @@ const SHUSH_RANGE = 100;  // how close to a table's center to shush it
 
 const VISION_RANGE = 220;
 const VISION_HALF = 0.6;  // radians (~34 degrees each side)
+
+const MAX_ITEMS = 6;      // item slots, bound to keys 1-6
+const MAX_ITEM_LEVEL = 4;
+const MAX_STAT_PICKS = 5;
 
 // ---------- Difficulty per level (tweak these to tune the game) ----------
 function levelConfig(n) {
@@ -70,6 +79,9 @@ function shuffle(arr) {
   }
   return arr;
 }
+const nearestOf = (arr, v) => arr.reduce((b, a) => (Math.abs(a - v) < Math.abs(b - v) ? a : b));
+const lastBelow = (arr, v) => arr.filter((a) => a < v).pop();
+const firstAbove = (arr, v) => arr.find((a) => a > v);
 
 // ---------- Sound (tiny WebAudio blips) ----------
 let actx = null;
@@ -120,6 +132,12 @@ const sfx = {
   caught: () => { tone(400, 0.25, { slide: -200 }); tone(200, 0.4, { delay: 0.25, slide: -100 }); },
   win: () => [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.12, { delay: i * 0.1 })),
   lose: () => [392, 330, 262].forEach((f, i) => tone(f, 0.2, { delay: i * 0.18, type: 'triangle', vol: 0.08 })),
+  item: () => { tone(660, 0.06, { type: 'triangle', vol: 0.07 }); tone(990, 0.08, { delay: 0.06, type: 'triangle', vol: 0.07 }); },
+  nope: () => tone(160, 0.12, { vol: 0.04 }),
+  squeak: () => tone(1400, 0.18, { type: 'sawtooth', vol: 0.04, slide: -700 }),
+  whistle: () => tone(2300, 0.5, { type: 'sine', vol: 0.06, slide: 120 }),
+  pick: () => tone(740, 0.08, { type: 'triangle', vol: 0.07 }),
+  pluck: () => tone(1800, 0.03, { vol: 0.015 }),
 };
 
 // ---------- Pixel sprites ----------
@@ -173,12 +191,9 @@ const STUDENT_BACK = [
   'ssssssss',
   'kssssssk',
 ];
-const TEACHER = [
-  '..hhhh..',
-  '.hhhhhh.',
-  '.hkkkkh.',
+const TEACHER_BODY = [
   '.kgkkgk.',
-  '..kkkk..',
+  '..kddk..',
   '.sswwss.',
   'sssttsss',
   'kssttssk',
@@ -186,6 +201,13 @@ const TEACHER = [
   '.pppppp.',
   '.pp..pp.',
   '.bb..bb.',
+];
+// Mr. Laporte's in-game sprite loses hair along with the portrait
+const TEACHER_HEADS = [
+  ['..kkkk..', '.kkkkkk.', '.kkkkkk.'], // bald
+  ['..kkkk..', '.hkkkkh.', '.hkkkkh.'], // horseshoe
+  ['..hkkh..', '.hhkkhh.', '.hkkkkh.'], // receding a lot
+  ['..hhhh..', '.hhhhhh.', '.hkkkkh.'], // full(ish)
 ];
 const PRINCIPAL = [
   '..hhhh..',
@@ -201,35 +223,190 @@ const PRINCIPAL = [
   '..k..k..',
   '..b..b..',
 ];
+const TA_SPRITE = [
+  '..hhhh..',
+  '.hhhhhh.',
+  '.hkkkkhh',
+  '.kekkekh',
+  '..kkkk.h',
+  '.oowwoo.',
+  'oooboooo',
+  'kooboook',
+  'kooooook',
+  '.pppppp.',
+  '.pp..pp.',
+  '.bb..bb.',
+];
+const CHICKEN = [
+  '...rr..',
+  '..yyyy.',
+  '.yykyoo',
+  'yyyyyy.',
+  'yyyyyy.',
+  '.yyyy..',
+  '..o.o..',
+];
 
 const SKINS = ['#ffdbac', '#f1c27d', '#e0ac69', '#c68642', '#8d5524'];
 const HAIRS = ['#2c1b10', '#5a3825', '#a0522d', '#e6c35c', '#151515', '#b5651d', '#7a2e1a', '#d9d9d9'];
 const SHIRTS = ['#e74c3c', '#3498db', '#2ecc71', '#9b59b6', '#f39c12', '#1abc9c', '#e84393', '#34495e', '#fdcb6e', '#6c5ce7'];
 
-const teacherSprite = makeSprite(TEACHER, {
-  h: '#4a2f1b', k: '#f1c27d', g: '#222', s: '#2e8b57', w: '#ffffff', t: '#c0392b', p: '#3b3b58', b: '#111',
-});
+const LAPORTE_PAL = {
+  h: '#6b4423', k: '#f6cfa6', g: '#222', d: '#9c7458', s: '#2e8b57', w: '#ffffff', t: '#c0392b', p: '#3b3b58', b: '#111',
+};
+const teacherSprites = TEACHER_HEADS.map((head) => makeSprite([...head, ...TEACHER_BODY], LAPORTE_PAL));
 const principalSprite = makeSprite(PRINCIPAL, {
   h: '#7b3f1d', k: '#e0ac69', e: '#222', r: '#c0392b', s: '#7d3c98', w: '#ffffff', q: '#4a235a', b: '#111',
 });
+const taSprite = makeSprite(TA_SPRITE, {
+  h: '#e6c35c', k: '#ffdbac', e: '#222', o: '#e67e22', w: '#ffffff', b: '#2980b9', p: '#2c3e50',
+});
+const chickenSprite = makeSprite(CHICKEN, { y: '#f4d03f', r: '#e74c3c', k: '#222', o: '#e67e22' });
+
+// ---------- Upgrade icons (8x8) ----------
+const icon = (rows, pal) => makeSprite(rows, pal);
+const ICONS = {
+  shoe: icon(['........', '........', '.rr.....', '.rrr....', '.rrrrrr.', 'rrrrrrrr', 'wwwwwwww', '........'], { r: '#e74c3c', w: '#ffffff' }),
+  pen: icon(['......rr', '.....rrr', '....rrr.', '...rrr..', '..rrr...', '.ggr....', '.gg.....', 'k.......'], { r: '#c0392b', g: '#ecf0f1', k: '#222' }),
+  desk: icon(['........', '.wwww...', '.wwww...', 'bbbbbbbb', 'bbbbbbbb', '.b....b.', '.b....b.', '.b....b.'], { w: '#ffffff', b: '#a0703d' }),
+  voice: icon(['......y.', '....yyy.', '..yyyyy.', 'yyyyyyy.', 'yyyyyyy.', '..yyyyy.', '....yyy.', '......y.'], { y: '#f1c40f' }),
+  hand: icon(['..k.k...', '.kkkkk..', '.kkkkk.k', '.kkkkkkk', '.kkkkkk.', '..kkkk..', '..kkkk..', '..ssss..'], { k: '#f6cfa6', s: '#2e8b57' }),
+  badge: icon(['...yy...', '...yy...', 'yyyyyyyy', '.yyyyyy.', '..yyyy..', '.yyyyyy.', '.yy..yy.', 'y......y'], { y: '#f39c12' }),
+  music: icon(['...kkkkk', '...kkkkk', '...k...k', '...k...k', '...k...k', '.kkk.kkk', 'kkkkkkkk', '.kk..kk.'], { k: '#9b59b6' }),
+  zen: icon(['...gg...', '..gggg..', '.gggggg.', 'gggggggg', '.gggggg.', '..gggg..', '...gg...', '...gg...'], { g: '#2ecc71' }),
+  hair: icon(['.h.h.h..', '.h.h.h.h', 'hh.h.hh.', '.hhhhhh.', 'kkkkkkkk', 'kkkkkkkk', '.kkkkkk.', '........'], { h: '#6b4423', k: '#f6cfa6' }),
+  heart: icon(['.rr..rr.', 'rrrrrrrr', 'rrrrrrrr', 'rrrrrrrr', '.rrrrrr.', '..rrrr..', '...rr...', '........'], { r: '#e84393' }),
+  radio: icon(['..k.....', '..k.....', '.kkkkk..', '.kgggk..', '.kkkkk..', '.kbkbk..', '.kkkkk..', '.kbkbk..'], { k: '#34495e', g: '#2ecc71', b: '#95a5a6' }),
+  clock: icon(['..kkkk..', '.kwwwwk.', 'kwwkwwwk', 'kwwkwwwk', 'kwwkkkwk', 'kwwwwwwk', '.kwwwwk.', '..kkkk..'], { k: '#2c3e50', w: '#ffffff' }),
+  folder: icon(['........', '.yyy....', 'yyyyyyyy', 'yyyyyyyy', 'yyyyyyyy', 'yyyyyyyy', 'yyyyyyyy', '........'], { y: '#f5b041' }),
+  snow: icon(['...b....', '.b.b.b..', '..bbb...', 'bbbbbbb.', '..bbb...', '.b.b.b..', '...b....', '........'], { b: '#85c1e9' }),
+  ta: icon(['..hhhh..', '.hkkkkh.', '.kkkkkk.', '..kkkk..', '.oobboo.', 'oooboooo', 'ooobbooo', '.oo..oo.'], { h: '#e6c35c', k: '#ffdbac', o: '#e67e22', b: '#2980b9' }),
+  sprint: icon(['........', '.yyyyyyy', 'wykkkkky', '.yyyyyyy', 'wykkkyyy', '.yyyyyyy', '........', '........'], { y: '#f7dc6f', k: '#7f8c8d', w: '#ffffff' }),
+  chicken: icon(['...rr...', '..yyyy..', '.yykyyoo', '.yyyyy..', 'yyyyyyy.', 'yyyyyyy.', '.yyyyy..', '..o.o...'], { y: '#f4d03f', r: '#e74c3c', k: '#222', o: '#e67e22' }),
+  detention: icon(['.pppppp.', '.pkkkkp.', '.pppppp.', '.pkkkpp.', '.pppppp.', '.pkkkkp.', '.pppppp.', '........'], { p: '#f5b7b1', k: '#c0392b' }),
+  whistle: icon(['........', '.....k..', '....k...', '.sssss..', 'sswssss.', 'ssssssss', '.ssss...', '........'], { s: '#bdc3c7', w: '#2c3e50', k: '#e74c3c' }),
+  wifi: icon(['.k..k...', '.k..k...', 'kkkkkk..', 'kkkkkk..', '.kkkk...', '..kk....', '..kk..r.', '..kkkkr.'], { k: '#ecf0f1', r: '#e74c3c' }),
+  quiz: icon(['.wwwwww.', '.wwkkww.', '.wkwwkw.', '.wwwkww.', '.wwkwww.', '.wwwwww.', '.wwkwww.', '.wwwwww.'], { w: '#ffffff', k: '#c0392b' }),
+  espresso: icon(['..s..s..', '...s..s.', '........', 'wwwwww..', 'wkkkkwww', 'wwwwww.w', 'wwwwwww.', '.wwww...'], { w: '#ecf0f1', k: '#6b3e1f', s: '#bdc3c7' }),
+  chair: icon(['.bbbbb..', '.bbbbb..', '.bbbbb..', 'bbbbbbb.', '...k....', '...k....', '.kkkkk..', '.o.o.o..'], { b: '#2c3e50', k: '#7f8c8d', o: '#111' }),
+  apple: icon(['....g...', '...gg...', '.rr.rr..', 'rrrrrrr.', 'rrwrrrr.', 'rrrrrrr.', '.rrrrr..', '..r.r...'], { r: '#e74c3c', g: '#27ae60', w: '#ffffff' }),
+  stress: icon(['..oooo..', '.oooooo.', 'oowooooo', 'oooooooo', 'oooooooo', 'oooooooo', '.oooooo.', '..oooo..'], { o: '#e67e22', w: '#ffffff' }),
+  tonic: icon(['...kk...', '...gg...', '..gggg..', '.gggggg.', '.gwwwwg.', '.gwggwg.', '.gwwwwg.', '.gggggg.'], { k: '#6b3e1f', g: '#27ae60', w: '#ffffff' }),
+};
+
+// ---------- Stats (straight upgrades) ----------
+const BASE_STATS = {
+  speed: 1, grade: 1, desk: 1, shush: 1, reach: 1, calm: 1, escalate: 1,
+  hairLoss: 1, regrow: 5, rapport: 0, warn: 0, time: 0, cooldown: 1, decay: 0,
+};
+const STAT_UPGRADES = [
+  { id: 'speed', icon: 'shoe', name: 'Comfy Sneakers', desc: 'Walk 12% faster.', apply: (s) => { s.speed += 0.12; } },
+  { id: 'grade', icon: 'pen', name: 'Red Pen Pro', desc: 'Grade papers 15% faster.', apply: (s) => { s.grade += 0.15; } },
+  { id: 'desk', icon: 'desk', name: 'Bigger Desk', desc: 'Your desk zone is 20% bigger.', apply: (s) => { s.desk += 0.2; } },
+  { id: 'shush', icon: 'voice', name: 'Teacher Voice', desc: 'Shush tables from 25% farther away.', apply: (s) => { s.shush += 0.25; } },
+  { id: 'reach', icon: 'hand', name: 'Long Arms', desc: 'Take phones from 30% farther away.', apply: (s) => { s.reach += 0.3; } },
+  { id: 'calm', icon: 'badge', name: 'Stern Reputation', desc: 'Problems show up 10% less often.', apply: (s) => { s.calm += 0.1; } },
+  { id: 'escalate', icon: 'music', name: 'Lo-fi Playlist', desc: 'Rowdy tables get louder 25% slower.', apply: (s) => { s.escalate *= 0.75; } },
+  { id: 'hairLoss', icon: 'zen', name: 'Zen Breathing', desc: 'Mr. Laporte loses hair 15% slower.', apply: (s) => { s.hairLoss *= 0.85; } },
+  { id: 'regrow', icon: 'hair', name: 'Rogaine', desc: 'Regrow 15 hair now, plus 6 more hair after every round.', apply: (s) => { s.regrow += 6; run.hair = Math.min(100, run.hair + 15); } },
+  { id: 'rapport', icon: 'heart', name: 'Good Rapport', desc: 'Every problem you fix lowers chaos by 3 more.', apply: (s) => { s.rapport += 3; } },
+  { id: 'warn', icon: 'radio', name: 'Walkie-Talkie', desc: 'Get warned 1.5s earlier when the principal is coming.', apply: (s) => { s.warn += 1.5; } },
+  { id: 'time', icon: 'clock', name: 'Overtime', desc: '+8 seconds before the bell rings.', apply: (s) => { s.time += 8; } },
+  { id: 'cooldown', icon: 'folder', name: 'Organized Desk', desc: 'Item cooldowns are 12% shorter.', apply: (s) => { s.cooldown *= 0.88; } },
+  { id: 'decay', icon: 'snow', name: 'Classroom Mgmt', desc: 'Chaos drains 1 point per second faster.', apply: (s) => { s.decay += 1; } },
+];
+
+function statLines() {
+  const s = run.stats, out = [];
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  if (s.speed !== 1) out.push(`SPEED +${pct(s.speed - 1)}`);
+  if (s.grade !== 1) out.push(`GRADING +${pct(s.grade - 1)}`);
+  if (s.desk !== 1) out.push(`DESK +${pct(s.desk - 1)}`);
+  if (s.shush !== 1) out.push(`SHUSH +${pct(s.shush - 1)}`);
+  if (s.reach !== 1) out.push(`REACH +${pct(s.reach - 1)}`);
+  if (s.calm !== 1) out.push(`CALM +${pct(s.calm - 1)}`);
+  if (s.escalate !== 1) out.push(`LOUDNESS -${pct(1 - s.escalate)}`);
+  if (s.hairLoss !== 1) out.push(`HAIR LOSS -${pct(1 - s.hairLoss)}`);
+  if (s.regrow !== BASE_STATS.regrow) out.push(`REGROW ${s.regrow}/RND`);
+  if (s.rapport) out.push(`RAPPORT +${s.rapport}`);
+  if (s.warn) out.push(`WARNING +${s.warn}S`);
+  if (s.time) out.push(`BELL +${s.time}S`);
+  if (s.cooldown !== 1) out.push(`COOLDOWN -${pct(1 - s.cooldown)}`);
+  if (s.decay) out.push(`CHILL +${s.decay}/S`);
+  return out;
+}
+
+// ---------- Active items ----------
+const durAt = (def, l) => Math.round(def.dur * (1 + 0.25 * (l - 1)) * 10) / 10;
+const cdAt = (def, l) => Math.round(def.cd * Math.pow(0.8, l - 1));
+const usesAt = (def, l) => def.uses + (l - 1);
+const whistleRadius = (l) => 240 + 50 * (l - 1);
+const tonicAmount = (l) => 12 + 4 * (l - 1);
+
+const ITEM_DEFS = [
+  { id: 'ta', name: 'Teaching Assistant', cd: 45, dur: 15,
+    desc: (l, d) => `A TA walks the aisles fixing phones and noise for ${durAt(d, l)}s.` },
+  { id: 'sprint', name: 'Hall Pass Sprint', cd: 10, dur: 3,
+    desc: (l, d) => `Run 80% faster for ${durAt(d, l)}s.` },
+  { id: 'chicken', name: 'Rubber Chicken', cd: 25, dur: 5,
+    desc: (l, d) => `Throw it the way you're facing. The principal stops and stares at it for ${durAt(d, l)}s.` },
+  { id: 'detention', name: 'Detention Slips', uses: 2,
+    desc: () => 'Send the closest student out of the cafeteria for the rest of the round.' },
+  { id: 'whistle', name: 'Coach Whistle', cd: 20,
+    desc: (l) => `Instantly quiets every rowdy table within ${whistleRadius(l)} pixels of you.` },
+  { id: 'wifi', name: 'Unplug the Wi-Fi', cd: 40, dur: 8,
+    desc: (l, d) => `Every phone goes away, and no new phones for ${durAt(d, l)}s.` },
+  { id: 'quiz', name: 'Pop Quiz', cd: 40, dur: 10,
+    desc: (l, d) => `No new problems for ${durAt(d, l)}s, and loud tables stop getting louder.` },
+  { id: 'espresso', name: 'Espresso Shot', cd: 30, dur: 6,
+    desc: (l, d) => `Grade 3x faster for ${durAt(d, l)}s.` },
+  { id: 'chair', name: 'Rolling Chair', cd: 35, dur: 8,
+    desc: (l, d) => `Roll your grading around with you. Grade anywhere for ${durAt(d, l)}s.` },
+  { id: 'apple', name: 'Shiny Apple', uses: 1, passive: true,
+    desc: () => 'Automatic: when the principal is about to catch you, she takes the apple instead.' },
+  { id: 'stress', name: 'Stress Ball', cd: 30, dur: 6,
+    desc: (l, d) => `Squeeze! Chaos drops by 35 and no hair loss for ${durAt(d, l)}s.` },
+  { id: 'tonic', name: 'Hair Tonic', uses: 1,
+    desc: (l) => `Rub it in. Regrows ${tonicAmount(l)} hair.` },
+];
+
+function itemMeta(def, l) {
+  if (def.passive) return `AUTOMATIC  ${usesAt(def, l)}X PER ROUND`;
+  if (def.uses !== undefined) return `${usesAt(def, l)}X PER ROUND`;
+  return `COOLDOWN ${cdAt(def, l)}S`;
+}
 
 // ---------- Game state ----------
-let state = 'title'; // title | playing | paused | caught | won | lost
+let state = 'title'; // title | playing | paused | caught | upgrade | lost
 let level = 1;
 let cfg = levelConfig(1);
+let run = null;          // { stats, statPicks, items, hair, handled }
 let tables = [];
 let students = [];
 let teacher = null;
 let principal = null;
+let ta = null;           // teaching assistant helper
+let chicken = null;      // thrown rubber chicken
+let fx = {};             // timers for active item effects
 let work = 0, chaos = 0, timeLeft = 0, spawnTimer = 0;
 let gameTime = 0;
-let speech = null;      // { text, t }
-let caught = null;      // { timer, x, y, reason }
+let speeches = [];       // { who, text, t }
+let caught = null;       // { timer, x, y, reason }
 let loseReason = '';
 let bgCanvas = null;
 let handled = 0;
-let bestLevel = 1;
-try { bestLevel = parseInt(localStorage.getItem('studyhall-best') || '1', 10) || 1; } catch (e) { /* ignore */ }
+let offer = null;        // upgrade screen state
+let faceEvent = null;    // { type, t } short-lived expression on the portrait
+let hairParticles = [];
+let prevHair = null;     // hair pixels visible last frame (for falling-hair effect)
+let bestLevel = 0;
+try { bestLevel = parseInt(localStorage.getItem('studyhall-best-cleared') || '0', 10) || 0; } catch (e) { /* ignore */ }
+
+function newRun() {
+  run = { stats: { ...BASE_STATS }, statPicks: {}, items: [], hair: 100, handled: 0 };
+  prevHair = null;
+  hairParticles = [];
+}
 
 function setupLevel(n) {
   level = n;
@@ -241,7 +418,7 @@ function setupLevel(n) {
       const t = {
         x: COL_X[c], y: ROW_Y[r], r, c,
         teacher: r === TEACHER_ROW && c === TEACHER_COL,
-        students: [], rowdy: 0, rowdyTimer: 0, spreadTimer: 0, cooldown: 0, rowdyAge: 0,
+        students: [], rowdy: 0, rowdyTimer: 0, spreadTimer: 0, cooldown: 0,
       };
       tables.push(t);
       if (t.teacher) continue;
@@ -252,7 +429,7 @@ function setupLevel(n) {
         const pal = { h: pick(HAIRS), k: pick(SKINS), e: '#222', s: pick(SHIRTS) };
         const st = {
           x: t.x + dx, y: t.y + dy, seat: s, table: t,
-          phone: false, phoneAge: 0, cooldown: 0, phase: Math.random() * 10,
+          phone: false, cooldown: 0, phase: Math.random() * 10,
           sprite: makeSprite(s === 2 ? STUDENT_BACK : STUDENT_FRONT, pal),
         };
         t.students.push(st);
@@ -260,20 +437,35 @@ function setupLevel(n) {
       }
     }
   }
-  teacher = { x: COL_X[TEACHER_COL] + 62, y: ROW_Y[TEACHER_ROW], moving: false, walkT: 0 };
+  teacher = { x: COL_X[TEACHER_COL] + 62, y: ROW_Y[TEACHER_ROW], moving: false, walkT: 0, dir: { x: 1, y: 0 } };
   principal = {
     phase: 'away', next: cfg.principalFirst + rand(0, 8), warn: 0,
     x: -40, y: 0, path: [], idx: 0, facing: 0, pause: 0, lookT: 0, baseFacing: 0,
-    suspicion: 0, side: 'left', walkT: 0,
+    suspicion: 0, side: 'left', walkT: 0, hold: 0, blind: 0,
   };
+  for (const it of run.items) {
+    it.cdLeft = 0;
+    it.cdMax = 1;
+    it.usesLeft = it.def.uses !== undefined ? usesAt(it.def, it.level) : 0;
+  }
+  ta = null;
+  chicken = null;
+  fx = { sprint: 0, wifi: 0, quiz: 0, espresso: 0, chair: 0, stress: 0 };
   work = 0;
   chaos = 0;
-  timeLeft = cfg.time;
+  timeLeft = cfg.time + run.stats.time;
   spawnTimer = 2.5;
-  speech = null;
+  speeches = [];
   caught = null;
+  faceEvent = null;
   handled = 0;
   bgCanvas = renderBackground();
+}
+
+function startRun() {
+  newRun();
+  setupLevel(1);
+  state = 'playing';
 }
 
 // ---------- Background (floor, walls, tables, chairs) ----------
@@ -375,17 +567,15 @@ window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
   audio();
-  if (e.repeat && (k === 'a' || k === 's' || k === 'enter' || k === 'p')) return;
+  if (e.repeat && k !== 'arrowup' && k !== 'arrowdown' && k !== 'arrowleft' && k !== 'arrowright') return;
   keys.add(k);
 
   if (k === 'm') muted = !muted;
+  if (state === 'upgrade') { upgradeKey(k); return; }
   if (k === 'enter' || k === ' ') {
-    if (state === 'title') { setupLevel(1); state = 'playing'; }
-    else if (state === 'won') { setupLevel(level + 1); state = 'playing'; }
-    else if (state === 'lost') { setupLevel(level); state = 'playing'; }
+    if (state === 'title' || state === 'lost') startRun();
     else if (state === 'paused') state = 'playing';
   }
-  if (k === 'r' && state === 'lost') { setupLevel(1); state = 'playing'; }
   if (k === 'p') {
     if (state === 'playing') state = 'paused';
     else if (state === 'paused') state = 'playing';
@@ -393,6 +583,7 @@ window.addEventListener('keydown', (e) => {
   if (state === 'playing') {
     if (k === 'a') actionPhone();
     if (k === 's') actionShush();
+    if (k >= '1' && k <= String(MAX_ITEMS)) useItem(Number(k) - 1);
   }
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -401,20 +592,75 @@ window.addEventListener('blur', () => {
   if (state === 'playing') state = 'paused';
 });
 
-function say(text) { speech = { text, t: 0.9 }; }
+// Mouse support for the upgrade cards
+function canvasPoint(e) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) * (canvas.width / r.width) - PANEL_W,
+    y: (e.clientY - r.top) * (canvas.height / r.height),
+  };
+}
+canvas.addEventListener('mousemove', (e) => {
+  if (state !== 'upgrade') return;
+  const hit = cardAt(canvasPoint(e));
+  if (hit && hit.row === offer.step) offer.sel = hit.i;
+});
+canvas.addEventListener('click', (e) => {
+  audio();
+  if (state === 'title' || state === 'lost') { startRun(); return; }
+  if (state !== 'upgrade') return;
+  const hit = cardAt(canvasPoint(e));
+  if (hit && hit.row === offer.step) { offer.sel = hit.i; confirmPick(); }
+});
 
-function actionPhone() {
-  let best = null, bd = PHONE_RANGE;
+// ---------- Speech bubbles ----------
+function sayAt(who, text, t = 0.9) {
+  speeches = speeches.filter((s) => s.who !== who);
+  speeches.push({ who, text, t });
+}
+function say(text) { sayAt(teacher, text); }
+
+// ---------- Fixing problems (teacher, TA and items all use these) ----------
+function fixPhone(s) {
+  s.phone = false;
+  s.cooldown = 8;
+  chaos = Math.max(0, chaos - 3 - run.stats.rapport);
+  handled++;
+  run.handled++;
+}
+function fixRowdy(t) {
+  t.rowdy = 0;
+  t.rowdyTimer = 0;
+  t.spreadTimer = 0;
+  t.cooldown = 8;
+  chaos = Math.max(0, chaos - 4 - run.stats.rapport);
+  handled++;
+  run.handled++;
+}
+
+function nearestPhone(from, range) {
+  let best = null, bd = range;
   for (const s of students) {
     if (!s.phone) continue;
-    const d = dist(teacher, s);
+    const d = dist(from, s);
     if (d < bd) { bd = d; best = s; }
   }
-  if (best) {
-    best.phone = false;
-    best.cooldown = 8;
-    chaos = Math.max(0, chaos - 3);
-    handled++;
+  return best;
+}
+function nearestRowdy(from, range) {
+  let best = null, bd = range;
+  for (const t of tables) {
+    if (!t.rowdy) continue;
+    const d = dist(from, t);
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best;
+}
+
+function actionPhone() {
+  const s = nearestPhone(teacher, PHONE_RANGE * run.stats.reach);
+  if (s) {
+    fixPhone(s);
     say('Phone away!');
     sfx.phone();
   } else {
@@ -423,23 +669,222 @@ function actionPhone() {
 }
 
 function actionShush() {
-  let best = null, bd = SHUSH_RANGE;
-  for (const t of tables) {
-    if (!t.rowdy) continue;
-    const d = dist(teacher, t);
-    if (d < bd) { bd = d; best = t; }
-  }
-  if (best) {
-    best.rowdy = 0;
-    best.rowdyTimer = 0;
-    best.spreadTimer = 0;
-    best.cooldown = 8;
-    chaos = Math.max(0, chaos - 4);
-    handled++;
+  const t = nearestRowdy(teacher, SHUSH_RANGE * run.stats.shush);
+  if (t) {
+    fixRowdy(t);
     say('Shhh!');
     sfx.shush();
   } else {
     say('?');
+  }
+}
+
+// ---------- Items ----------
+function itemActiveTime(it) {
+  switch (it.def.id) {
+    case 'ta': return ta ? ta.t : 0;
+    case 'chicken': return chicken ? chicken.stare : 0;
+    default: return fx[it.def.id] || 0;
+  }
+}
+
+const ITEM_USE = {
+  ta(it) {
+    const d = durAt(it.def, it.level);
+    if (ta) { ta.t = Math.max(ta.t, d); ta.max = Math.max(ta.max, d); return true; }
+    let node = null, bd = Infinity;
+    for (const x of NAV_X) {
+      for (const y of NAV_Y) {
+        const dd = Math.hypot(teacher.x - x, teacher.y - y);
+        if (dd < bd) { bd = dd; node = { x, y }; }
+      }
+    }
+    ta = { x: node.x, y: node.y, t: d, max: d, path: [], target: null, walkT: 0, moving: false };
+    sayAt(ta, "I'm on it!", 1.2);
+    say('Help!');
+    return true;
+  },
+  sprint(it) {
+    fx.sprint = durAt(it.def, it.level);
+    say('Zoom!');
+    return true;
+  },
+  chicken(it) {
+    // Land on open floor: shorten the throw until it clears tables and students
+    let tx = teacher.x, ty = teacher.y;
+    for (let d = 190; d >= 30; d -= 10) {
+      const x = clamp(teacher.x + teacher.dir.x * d, 24, W - 24);
+      const y = clamp(teacher.y + teacher.dir.y * d, HUD_H + 24, H - 24);
+      const blocked = tables.some((t) => dist({ x, y }, t) < TABLE_R + 12 || t.students.some((s) => dist({ x, y }, s) < 24));
+      if (!blocked) { tx = x; ty = y; break; }
+    }
+    chicken = { sx: teacher.x, sy: teacher.y - 10, x: tx, y: ty, fly: 0, landed: false, life: 20,
+      stare: durAt(it.def, it.level), noticed: false };
+    say('Hey, look!');
+    return true;
+  },
+  detention() {
+    let best = null, bd = 70;
+    for (const s of students) {
+      const d = dist(teacher, s);
+      if (d < bd) { bd = d; best = s; }
+    }
+    if (!best) { say('Nobody close!'); return false; }
+    if (best.phone) { handled++; run.handled++; }
+    students = students.filter((s) => s !== best);
+    best.table.students = best.table.students.filter((s) => s !== best);
+    if (best.table.students.length < 2 && best.table.rowdy) fixRowdy(best.table);
+    say('Detention!');
+    return true;
+  },
+  whistle(it) {
+    const r = whistleRadius(it.level);
+    const near = tables.filter((t) => t.rowdy && dist(teacher, t) < r);
+    if (!near.length) { say('All quiet!'); return false; }
+    near.forEach(fixRowdy);
+    say('TWEEET!');
+    sfx.whistle();
+    return true;
+  },
+  wifi(it) {
+    students.filter((s) => s.phone).forEach(fixPhone);
+    fx.wifi = durAt(it.def, it.level);
+    say('Oops, Wi-Fi!');
+    return true;
+  },
+  quiz(it) {
+    fx.quiz = durAt(it.def, it.level);
+    say('POP QUIZ!');
+    return true;
+  },
+  espresso(it) {
+    fx.espresso = durAt(it.def, it.level);
+    say('*sip*');
+    return true;
+  },
+  chair(it) {
+    fx.chair = durAt(it.def, it.level);
+    say('Wheee!');
+    return true;
+  },
+  stress(it) {
+    chaos = Math.max(0, chaos - 35);
+    fx.stress = durAt(it.def, it.level);
+    say('*squeeze*');
+    return true;
+  },
+  tonic(it) {
+    if (run.hair >= 100) { say('Hair is perfect!'); return false; }
+    run.hair = Math.min(100, run.hair + tonicAmount(it.level));
+    faceEvent = { type: 'happy', t: 1.2 };
+    say('Ahh, better.');
+    return true;
+  },
+};
+
+function useItem(i) {
+  const it = run.items[i];
+  if (!it) return;
+  const d = it.def;
+  if (d.passive) { say('Automatic!'); return; }
+  if (it.cdLeft > 0) { say('Not ready!'); sfx.nope(); return; }
+  if (d.uses !== undefined && it.usesLeft <= 0) { say('All used up!'); sfx.nope(); return; }
+  if (ITEM_USE[d.id](it) === false) { sfx.nope(); return; }
+  if (d.cd) { it.cdMax = cdAt(d, it.level) * run.stats.cooldown; it.cdLeft = it.cdMax; }
+  if (d.uses !== undefined) it.usesLeft--;
+  it.flash = 0.4;
+  sfx.item();
+}
+
+function updateItems(dt) {
+  for (const it of run.items) {
+    if (it.cdLeft > 0) it.cdLeft = Math.max(0, it.cdLeft - dt);
+    if (it.flash > 0) it.flash -= dt;
+  }
+  for (const k in fx) if (fx[k] > 0) fx[k] = Math.max(0, fx[k] - dt);
+}
+
+// ---------- Teaching assistant (walks the aisle grid) ----------
+// Every aisle line is free of tables, so a route of straight aisle segments
+// (horizontal, then vertical, then horizontal) always gets there.
+function onLineY(p) { return NAV_Y.some((y) => Math.abs(y - p.y) < 0.5); }
+function onLineX(p) { return NAV_X.some((x) => Math.abs(x - p.x) < 0.5); }
+
+function navRoute(from, goal) {
+  const onH = onLineY(from), onV = onLineX(from);
+  if (onH && goal.h && Math.abs(goal.y - from.y) < 0.5) return [{ x: goal.x, y: goal.y }];
+  if (onV && !goal.h && Math.abs(goal.x - from.x) < 0.5) return [{ x: goal.x, y: goal.y }];
+  let n0;
+  if (onH && onV) n0 = { x: from.x, y: from.y };
+  else if (onH) n0 = { x: nearestOf(NAV_X, from.x), y: from.y };
+  else n0 = { x: from.x, y: nearestOf(NAV_Y, from.y) };
+  const pts = [n0];
+  if (goal.h) {
+    const nx = nearestOf(NAV_X, goal.x);
+    pts.push({ x: nx, y: n0.y }, { x: nx, y: goal.y }, { x: goal.x, y: goal.y });
+  } else {
+    pts.push({ x: goal.x, y: n0.y }, { x: goal.x, y: goal.y });
+  }
+  return pts.filter((p, i) => {
+    const prev = i === 0 ? from : pts[i - 1];
+    return Math.abs(p.x - prev.x) > 0.5 || Math.abs(p.y - prev.y) > 0.5;
+  });
+}
+
+// A spot on the aisle grid close enough to deal with the problem
+function approachPoint(target) {
+  if (target.kind === 'phone') {
+    const s = target.s, t = s.table;
+    if (s.seat === 0) return { x: s.x, y: lastBelow(NAV_Y, t.y), h: true };
+    if (s.seat === 2) return { x: s.x, y: firstAbove(NAV_Y, t.y), h: true };
+    if (s.seat === 1) return { x: firstAbove(NAV_X, t.x), y: s.y, h: false };
+    return { x: lastBelow(NAV_X, t.x), y: s.y, h: false };
+  }
+  const t = target.t;
+  const up = lastBelow(NAV_Y, t.y), down = firstAbove(NAV_Y, t.y);
+  return { x: t.x, y: Math.abs(ta.y - up) < Math.abs(ta.y - down) ? up : down, h: true };
+}
+
+function targetValid(target) {
+  return target.kind === 'phone' ? target.s.phone && students.includes(target.s) : target.t.rowdy > 0;
+}
+
+function updateTA(dt) {
+  if (!ta) return;
+  ta.t -= dt;
+  if (ta.t <= 0) {
+    speeches = speeches.filter((s) => s.who !== ta);
+    ta = null;
+    return;
+  }
+  if (ta.target && !targetValid(ta.target)) { ta.target = null; ta.path = []; }
+  if (!ta.target) {
+    let best = null, bd = Infinity;
+    for (const s of students) {
+      if (s.phone && dist(ta, s) < bd) { bd = dist(ta, s); best = { kind: 'phone', s }; }
+    }
+    for (const t of tables) {
+      if (t.rowdy && dist(ta, t) < bd) { bd = dist(ta, t); best = { kind: 'rowdy', t }; }
+    }
+    if (best) {
+      ta.target = best;
+      ta.path = navRoute(ta, approachPoint(best));
+    }
+  }
+  ta.moving = ta.path.length > 0;
+  if (ta.path.length) {
+    let step = 150 * dt;
+    ta.walkT += dt;
+    while (step > 0 && ta.path.length) {
+      const p = ta.path[0];
+      const d = Math.hypot(p.x - ta.x, p.y - ta.y);
+      if (d <= step) { ta.x = p.x; ta.y = p.y; ta.path.shift(); step -= d; }
+      else { ta.x += ((p.x - ta.x) / d) * step; ta.y += ((p.y - ta.y) / d) * step; step = 0; }
+    }
+  } else if (ta.target) {
+    if (ta.target.kind === 'phone') { fixPhone(ta.target.s); sayAt(ta, 'Phone, please!'); sfx.phone(); }
+    else { fixRowdy(ta.target.t); sayAt(ta, 'Shhh!'); sfx.shush(); }
+    ta.target = null;
   }
 }
 
@@ -453,8 +898,10 @@ function moveTeacher(dt) {
   teacher.moving = dx !== 0 || dy !== 0;
   if (!teacher.moving) return;
   const len = Math.hypot(dx, dy);
-  teacher.x += (dx / len) * TEACHER_SPEED * dt;
-  teacher.y += (dy / len) * TEACHER_SPEED * dt;
+  teacher.dir = { x: dx / len, y: dy / len };
+  const speed = TEACHER_SPEED * run.stats.speed * (fx.sprint > 0 ? 1.8 : 1);
+  teacher.x += teacher.dir.x * speed * dt;
+  teacher.y += teacher.dir.y * speed * dt;
   teacher.walkT += dt;
 
   // Push out of tables and seated students
@@ -489,20 +936,19 @@ function nearPrincipal(p) {
 }
 
 function spawnIssue() {
+  if (fx.quiz > 0) return;
   if (activeIssueCount() >= cfg.maxIssues) return;
-  if (Math.random() < 0.55) {
+  if (Math.random() < 0.55 && fx.wifi <= 0) {
     const options = students.filter((s) => !s.phone && s.cooldown <= 0 && !nearPrincipal(s));
     if (!options.length) return;
-    const s = pick(options);
-    s.phone = true;
-    s.phoneAge = 0;
+    pick(options).phone = true;
   } else {
-    const options = tables.filter((t) => !t.teacher && !t.rowdy && t.cooldown <= 0 && !nearPrincipal(t));
+    const options = tables.filter((t) => !t.teacher && !t.rowdy && t.cooldown <= 0 &&
+      t.students.length >= 2 && !nearPrincipal(t));
     if (!options.length) return;
     const t = pick(options);
     t.rowdy = 1;
     t.rowdyTimer = 0;
-    t.rowdyAge = 0;
   }
   sfx.spawn();
 }
@@ -511,31 +957,35 @@ function updateIssues(dt) {
   spawnTimer -= dt;
   if (spawnTimer <= 0) {
     const slow = principal.phase === 'walking' ? 1.6 : 1; // a bit calmer while she's around
-    spawnTimer = cfg.spawn * rand(0.6, 1.4) * slow;
+    spawnTimer = cfg.spawn * rand(0.6, 1.4) * slow * run.stats.calm;
     spawnIssue();
   }
 
-  for (const s of students) {
-    if (s.cooldown > 0) s.cooldown -= dt;
-    if (s.phone) s.phoneAge += dt;
-  }
+  for (const s of students) if (s.cooldown > 0) s.cooldown -= dt;
 
   for (const t of tables) {
     if (t.cooldown > 0) t.cooldown -= dt;
-    if (!t.rowdy) continue;
-    t.rowdyAge += dt;
-    t.rowdyTimer += dt;
-    if (t.rowdy < 3 && t.rowdyTimer > 7) { t.rowdy++; t.rowdyTimer = 0; }
+    if (!t.rowdy || fx.quiz > 0) continue;
+    t.rowdyTimer += dt * run.stats.escalate;
+    if (t.rowdy < 3 && t.rowdyTimer > 7) {
+      t.rowdy++;
+      t.rowdyTimer = 0;
+      if (t.rowdy === 3) {
+        // A table going full LOUD costs Mr. Laporte some hair
+        if (fx.stress <= 0) run.hair = Math.max(0, run.hair - 2 * run.stats.hairLoss);
+        faceEvent = { type: 'furious', t: 1.2 };
+      }
+    }
     if (t.rowdy === 3) {
       // Really loud tables get their neighbours riled up too
       t.spreadTimer += dt;
       if (t.spreadTimer > 6) {
         t.spreadTimer = 0;
-        const nbrs = tables.filter((o) => !o.teacher && !o.rowdy && o.cooldown <= 0 &&
+        const nbrs = tables.filter((o) => !o.teacher && !o.rowdy && o.cooldown <= 0 && o.students.length >= 2 &&
           Math.abs(o.r - t.r) + Math.abs(o.c - t.c) === 1);
         if (nbrs.length) {
           const o = pick(nbrs);
-          o.rowdy = 1; o.rowdyTimer = 0; o.rowdyAge = 0;
+          o.rowdy = 1; o.rowdyTimer = 0;
         }
       }
     }
@@ -546,8 +996,15 @@ function updateIssues(dt) {
   let load = 0;
   for (const s of students) if (s.phone) load += 1;
   for (const t of tables) load += ROWDY_WEIGHT[t.rowdy];
-  const rate = load * 1.5 - 2.5;
+  const rate = load * 1.5 - 2.5 - run.stats.decay;
   chaos = clamp(chaos + rate * (rate > 0 ? cfg.chaosMul : 1) * dt, 0, 100);
+}
+
+// Chaos stresses Mr. Laporte out, and stress makes his hair fall out.
+function updateHair(dt) {
+  if (fx.stress > 0 || chaos <= 15) return;
+  const k = (chaos - 15) / 85;
+  run.hair = Math.max(0, run.hair - 2.5 * k * k * run.stats.hairLoss * dt);
 }
 
 function planPrincipalRoute() {
@@ -570,6 +1027,8 @@ function planPrincipalRoute() {
   pr.idx = 1;
   pr.facing = fromLeft ? 0 : Math.PI;
   pr.pause = 0;
+  pr.hold = 0;
+  pr.blind = 0;
   pr.suspicion = 0;
 }
 
@@ -598,7 +1057,7 @@ function updatePrincipal(dt) {
     if (pr.next <= 0) {
       planPrincipalRoute();
       pr.phase = 'warning';
-      pr.warn = 3.5;
+      pr.warn = 3.5 + run.stats.warn;
       sfx.warn();
     }
     return;
@@ -611,7 +1070,15 @@ function updatePrincipal(dt) {
 
   // Walking her patrol route
   let desired = pr.facing;
-  if (pr.pause > 0) {
+  const distracted = chicken && chicken.landed && chicken.stare > 0 && pr.x > 0 && pr.x < W;
+  if (pr.blind > 0) pr.blind -= dt;
+  if (pr.hold > 0) {
+    pr.hold -= dt;
+  } else if (distracted) {
+    desired = Math.atan2(chicken.y - pr.y, chicken.x - pr.x);
+    chicken.stare -= dt;
+    if (!chicken.noticed) { chicken.noticed = true; sayAt(pr, 'A chicken?!', 1.6); sfx.squeak(); }
+  } else if (pr.pause > 0) {
     pr.pause -= dt;
     pr.lookT += dt;
     desired = pr.baseFacing + Math.sin(pr.lookT * 2.4) * 0.95; // look around
@@ -629,6 +1096,7 @@ function updatePrincipal(dt) {
         pr.phase = 'away';
         pr.next = cfg.principalEvery * rand(0.7, 1.3);
         pr.suspicion = 0;
+        speeches = speeches.filter((s) => s.who !== pr);
         return;
       }
       const nxt = pr.path[pr.idx];
@@ -646,62 +1114,431 @@ function updatePrincipal(dt) {
   pr.facing += clamp(diff, -maxTurn, maxTurn);
 
   // Is she seeing something she shouldn't?
-  const seen = whatPrincipalSees();
+  const seen = pr.blind > 0 ? null : whatPrincipalSees();
   if (seen) {
     pr.suspicion += dt / 0.45;
     if (pr.suspicion >= 1) {
-      caught = { timer: 1.8, ...seen };
-      state = 'caught';
-      sfx.caught();
+      const apple = run.items.find((i) => i.def.id === 'apple' && i.usesLeft > 0);
+      if (apple) {
+        apple.usesLeft--;
+        apple.flash = 0.6;
+        pr.suspicion = 0;
+        pr.blind = 3;
+        pr.hold = 2;
+        sayAt(pr, 'Ooh, an apple!', 2);
+        sfx.item();
+      } else {
+        caught = { timer: 1.8, ...seen };
+        state = 'caught';
+        sfx.caught();
+      }
     }
   } else {
     pr.suspicion = Math.max(0, pr.suspicion - dt * 1.5);
   }
 }
 
+function updateChicken(dt) {
+  if (!chicken) return;
+  if (!chicken.landed) {
+    chicken.fly += dt / 0.45;
+    if (chicken.fly >= 1) { chicken.landed = true; sfx.squeak(); }
+    return;
+  }
+  chicken.life -= dt;
+  if (chicken.life <= 0 || chicken.stare <= 0) chicken = null;
+}
+
+function updatePortraitFx(dt) {
+  if (faceEvent) { faceEvent.t -= dt; if (faceEvent.t <= 0) faceEvent = null; }
+  for (const p of hairParticles) {
+    p.vy += 18 * dt;
+    p.y += p.vy * dt;
+    p.x += Math.sin(p.y * 1.3 + p.seed) * 2 * dt;
+    p.life -= dt;
+  }
+  hairParticles = hairParticles.filter((p) => p.life > 0 && p.y < 32);
+}
+
+function lose(reason) {
+  loseReason = reason;
+  state = 'lost';
+  sfx.lose();
+}
+
+function winLevel() {
+  bestLevel = Math.max(bestLevel, level);
+  try { localStorage.setItem('studyhall-best-cleared', String(bestLevel)); } catch (e) { /* ignore */ }
+  sfx.win();
+  const before = run.hair;
+  run.hair = Math.min(100, run.hair + run.stats.regrow);
+  offer = makeOffer(Math.round(run.hair - before));
+  state = 'upgrade';
+}
+
 function update(dt) {
   gameTime += dt;
-  if (speech) { speech.t -= dt; if (speech.t <= 0) speech = null; }
+  updatePortraitFx(dt);
+  for (const s of speeches) s.t -= dt;
+  speeches = speeches.filter((s) => s.t > 0);
 
   if (state === 'caught') {
     caught.timer -= dt;
     if (caught.timer <= 0) {
-      loseReason = caught.reason === 'phone'
+      lose(caught.reason === 'phone'
         ? 'The principal caught a student on their phone!'
-        : 'The principal caught a rowdy table!';
-      state = 'lost';
-      sfx.lose();
+        : 'The principal caught a rowdy table!');
     }
     return;
   }
   if (state !== 'playing') return;
 
   timeLeft -= dt;
+  updateItems(dt);
   moveTeacher(dt);
-  const atDesk = dist(teacher, tables.find((t) => t.teacher)) < WORK_RANGE;
-  if (atDesk) work = Math.min(cfg.work, work + dt);
+  const desk = tables.find((t) => t.teacher);
+  const atDesk = fx.chair > 0 || dist(teacher, desk) < WORK_RANGE * run.stats.desk;
+  if (atDesk) work = Math.min(cfg.work, work + dt * run.stats.grade * (fx.espresso > 0 ? 3 : 1));
   updateIssues(dt);
+  updateTA(dt);
+  updateChicken(dt);
   updatePrincipal(dt);
+  updateHair(dt);
   if (state !== 'playing') return;
 
   if (work >= cfg.work) {
-    state = 'won';
-    bestLevel = Math.max(bestLevel, level + 1);
-    try { localStorage.setItem('studyhall-best', String(bestLevel)); } catch (e) { /* ignore */ }
-    sfx.win();
-  } else if (chaos >= 100) {
-    loseReason = 'The study hall descended into total chaos!';
-    state = 'lost';
-    sfx.lose();
+    winLevel();
+  } else if (run.hair <= 0) {
+    lose('Mr. Laporte ran out of hair. He has gone home to lie down.');
   } else if (timeLeft <= 0) {
     timeLeft = 0;
-    loseReason = 'The bell rang before you finished grading!';
-    state = 'lost';
-    sfx.lose();
+    lose('The bell rang before you finished grading!');
   }
 }
 
-// ---------- Drawing ----------
+// ---------- Upgrade screen ----------
+function makeOffer(regrew) {
+  const statPool = STAT_UPGRADES.filter((u) => (run.statPicks[u.id] || 0) < MAX_STAT_PICKS);
+  const stats = shuffle(statPool.slice()).slice(0, 3);
+  const itemPool = [];
+  for (const def of ITEM_DEFS) {
+    const owned = run.items.find((i) => i.def === def);
+    if (owned) {
+      if (owned.level < MAX_ITEM_LEVEL) itemPool.push({ def, owned, level: owned.level + 1 });
+    } else if (run.items.length < MAX_ITEMS) {
+      itemPool.push({ def, owned: null, level: 1 });
+    }
+  }
+  const items = shuffle(itemPool).slice(0, 3);
+  return { stats, items, step: 0, sel: 0, pickedStat: -1, regrew };
+}
+
+const CARD_W = 290, CARD_H = 170, CARD_GAP = 15;
+const CARD_X0 = (W - (CARD_W * 3 + CARD_GAP * 2)) / 2;
+const CARD_ROW_Y = [128, 372];
+
+function cardAt(p) {
+  for (let row = 0; row < 2; row++) {
+    const n = row === 0 ? offer.stats.length : offer.items.length;
+    for (let i = 0; i < n; i++) {
+      const x = CARD_X0 + i * (CARD_W + CARD_GAP), y = CARD_ROW_Y[row];
+      if (p.x >= x && p.x <= x + CARD_W && p.y >= y && p.y <= y + CARD_H) return { row, i };
+    }
+  }
+  return null;
+}
+
+function upgradeKey(k) {
+  const n = offer.step === 0 ? offer.stats.length : offer.items.length;
+  if (k === 'arrowleft') { offer.sel = (offer.sel + n - 1) % n; sfx.pick(); }
+  if (k === 'arrowright') { offer.sel = (offer.sel + 1) % n; sfx.pick(); }
+  if (k >= '1' && k <= String(n)) { offer.sel = Number(k) - 1; confirmPick(); return; }
+  if (k === 'enter' || k === ' ') confirmPick();
+}
+
+function confirmPick() {
+  if (offer.step === 0) {
+    const u = offer.stats[offer.sel];
+    if (u) {
+      u.apply(run.stats);
+      run.statPicks[u.id] = (run.statPicks[u.id] || 0) + 1;
+      offer.pickedStat = offer.sel;
+    }
+    sfx.item();
+    offer.step = 1;
+    offer.sel = 0;
+    if (!offer.items.length) finishUpgrade();
+    return;
+  }
+  const choice = offer.items[offer.sel];
+  if (choice.owned) choice.owned.level++;
+  else run.items.push({ def: choice.def, level: 1, cdLeft: 0, cdMax: 1, usesLeft: 0, flash: 0 });
+  sfx.item();
+  finishUpgrade();
+}
+
+function finishUpgrade() {
+  offer = null;
+  setupLevel(level + 1);
+  state = 'playing';
+}
+
+// ---------- Mr. Laporte's portrait (32x32 pixels, drawn procedurally) ----------
+const PORTRAIT_SIZE = 224; // 32 pixels x 7
+const PS = PORTRAIT_SIZE / 32;
+const pcv = document.createElement('canvas');
+pcv.width = pcv.height = 32;
+const pctx = pcv.getContext('2d');
+
+const HAIR_COL = '#6b4423', HAIR_HI = '#8b5a2b', HAIR_DK = '#4a2e17';
+const BROW_COL = '#4a2e17';
+const MOUTH_COL = '#6e2c1f', MOUTH_IN = '#4a1414', TEETH = '#f8f4ec';
+
+// Every hair pixel gets a "keep score": the hairline recedes from the front,
+// then the top thins, and the sides go last -- so he ends up with the classic
+// horseshoe before going fully bald.
+const HAIR_PIXELS = (() => {
+  const out = [];
+  const hash = (x, y) => {
+    const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+    return n - Math.floor(n);
+  };
+  for (let y = 2; y < 15; y++) {
+    for (let x = 0; x < 32; x++) {
+      const dx = Math.abs(x + 0.5 - 16);
+      const inHair = (dx / 9.6) ** 2 + ((y + 0.5 - 14) / 11) ** 2 <= 1;
+      // Receding "M" hairline: widow's peak in the middle, temples pushed back
+      const hairline = dx < 2.5 ? 7 : dx < 4.5 ? 6 : dx < 6.5 ? 5 : 13;
+      if (!inHair || y >= hairline) continue;
+      const side = clamp((dx - 1) / 7, 0, 1);
+      const low = clamp((y - 2) / 10, 0, 1);
+      // Middle: the front hairline goes first and the top follows. Sides: sideburns stay longest.
+      const vert = side * low + (1 - side) * (1 - low);
+      const keep = clamp(0.6 * side + 0.28 * vert + 0.12 * hash(x, y), 0.02, 0.97);
+      let col = HAIR_COL;
+      if (y === hairline - 1 || dx > 7.5) col = HAIR_DK;
+      else if (y <= 4 && x % 3 === 0) col = HAIR_HI;
+      out.push({ x, y, keep, col, idx: y * 32 + x });
+    }
+  }
+  return out;
+})();
+
+function faceExpression() {
+  if (state === 'lost') return 'defeated';
+  if (state === 'upgrade') return 'happy';
+  if (state === 'title') return 'calm';
+  if (state === 'caught') return 'shocked';
+  if (faceEvent) return faceEvent.type;
+  if (principal.phase === 'warning' || (principal.phase === 'walking' && principal.suspicion > 0.15)) return 'shocked';
+  if (chaos >= 75) return 'furious';
+  if (chaos >= 50) return 'frustrated';
+  if (chaos >= 25) return 'annoyed';
+  return 'calm';
+}
+
+function buildFace() {
+  const g = [], fig = [];
+  for (let y = 0; y < 32; y++) { g.push(new Array(32).fill(null)); fig.push(new Array(32).fill(false)); }
+  const set = (x, y, c, figure = true) => {
+    if (x < 0 || y < 0 || x > 31 || y > 31) return;
+    g[y][x] = c;
+    if (figure) fig[y][x] = true;
+  };
+  const row = (x0, x1, y, c) => { for (let x = x0; x <= x1; x++) set(x, y, c); };
+  const expr = faceExpression();
+  const hairFrac = run.hair / 100;
+  const red = expr === 'furious';
+  const skin = red ? '#f2a48a' : '#f6cfa6';
+  const skinSh = red ? '#dc8668' : '#e2ae88';
+
+  // Background: cafeteria wall
+  for (let y = 0; y < 32; y++) {
+    for (let x = 0; x < 32; x++) {
+      g[y][x] = y < 21 ? ((x + y) % 8 === 0 ? '#41607f' : '#3b5875') : y === 21 ? '#27394d' : '#2f4760';
+    }
+  }
+  // Neck
+  for (let y = 21; y < 26; y++) row(12, 19, y, skinSh);
+  // Sweater, shirt collar and tie
+  const sweaterW = [5, 7, 9, 11, 12, 12, 12];
+  for (let y = 25; y < 32; y++) {
+    const hw = sweaterW[y - 25];
+    for (let x = 0; x < 32; x++) {
+      const dx = Math.abs(x + 0.5 - 16);
+      if (dx <= hw) set(x, y, dx > hw - 1.5 ? '#226b42' : '#2e8b57');
+    }
+  }
+  for (let y = 25; y < 29; y++) {
+    const w = 3 - (y - 25) * 0.8;
+    for (let x = 0; x < 32; x++) if (Math.abs(x + 0.5 - 16) <= w) set(x, y, '#ecf0f1');
+  }
+  set(15, 26, '#962d22'); set(16, 26, '#962d22');
+  set(15, 27, '#c0392b'); set(16, 27, '#c0392b');
+  set(15, 28, '#c0392b'); set(16, 28, '#c0392b');
+  // Ears
+  for (const [ex, sh] of [[6, 7], [25, 24]]) {
+    for (let y = 13; y <= 16; y++) set(ex, y, skin);
+    set(ex === 6 ? 5 : 26, 14, skin); set(ex === 6 ? 5 : 26, 15, skin);
+    set(ex, 14, skinSh); set(ex, 15, skinSh);
+  }
+  // Head
+  for (let y = 0; y < 32; y++) {
+    for (let x = 0; x < 32; x++) {
+      const e = ((x + 0.5 - 16) / 8.5) ** 2 + ((y + 0.5 - 14) / 10) ** 2;
+      if (e <= 1) set(x, y, e > 0.7 && x + 0.5 > 16 ? skinSh : skin);
+    }
+  }
+  // Nose
+  set(16, 15, skinSh); set(16, 16, skinSh); set(15, 17, skinSh); set(16, 17, skinSh);
+  // Stubble: mustache and chin only (no cheeks)
+  const stub = (x, y) => set(x, y, (x + y) % 2 ? '#a07a5e' : '#b88f70');
+  for (let x = 13; x <= 18; x++) if ((x + 18) % 2 === 0) stub(x, 18);
+  for (let x = 12; x <= 19; x++) stub(x, 19);
+  stub(15, 21); stub(16, 21);
+  for (let x = 13; x <= 18; x++) stub(x, 22);
+  for (let x = 14; x <= 17; x++) stub(x, 23);
+
+  // Eyes and eyebrows
+  const blink = (gameTime % 3.7) < 0.13;
+  const eyes = (style) => {
+    for (const [x0, pupil] of [[10, 11], [19, 20]]) {
+      if (style === 'closed') { row(x0, x0 + 2, 14, BROW_COL); continue; }
+      if (style === 'happy') { row(x0, x0 + 2, 13, BROW_COL); set(x0, 14, BROW_COL); set(x0 + 2, 14, BROW_COL); continue; }
+      if (style === 'wide') {
+        for (let y = 12; y <= 14; y++) row(x0, x0 + 2, y, '#ffffff');
+        set(x0 + 1, 13, '#1b1b1b');
+        continue;
+      }
+      const top = style === 'squint' ? 14 : 13;
+      for (let y = top; y <= 14; y++) row(x0, x0 + 2, y, '#ffffff');
+      for (let y = top; y <= 14; y++) set(pupil, y, '#1b1b1b');
+      if (style === 'lidded') row(x0, x0 + 2, 13, skinSh);
+      if (style === 'down') { set(pupil, 13, '#ffffff'); }
+    }
+  };
+  const brows = (style) => {
+    const L = [10, 11, 12], R = [21, 20, 19]; // outer -> inner
+    const ys = {
+      flat: [11, 11, 11], low: [12, 12, 12], angry: [11, 12, 13], raised: [10, 9, 10], sad: [12, 11, 10],
+    }[style];
+    for (let i = 0; i < 3; i++) { set(L[i], ys[i], BROW_COL); set(R[i], ys[i], BROW_COL); }
+  };
+  // Mouths are drawn as rows of pixels around the center (x = 15/16)
+  const mouth = (style) => {
+    const D = MOUTH_COL;
+    switch (style) {
+      case 'smile': set(13, 20, D); row(14, 17, 21, D); set(18, 20, D); break;
+      case 'flat': row(13, 18, 21, D); break;
+      case 'grimace':
+        row(13, 18, 20, D); set(13, 21, D); row(14, 17, 21, TEETH); set(18, 21, D); row(13, 18, 22, D);
+        set(15, 21, '#d5cfc4');
+        break;
+      case 'yell':
+        row(13, 18, 20, D);
+        set(13, 21, D); row(14, 17, 21, TEETH); set(18, 21, D);
+        set(13, 22, D); row(14, 17, 22, MOUTH_IN); set(18, 22, D);
+        row(14, 17, 23, D);
+        break;
+      case 'o':
+        set(15, 20, D); set(16, 20, D);
+        set(14, 21, D); set(15, 21, MOUTH_IN); set(16, 21, MOUTH_IN); set(17, 21, D);
+        set(14, 22, D); set(15, 22, MOUTH_IN); set(16, 22, MOUTH_IN); set(17, 22, D);
+        set(15, 23, D); set(16, 23, D);
+        break;
+      case 'grin':
+        set(12, 20, D); set(19, 20, D);
+        set(13, 21, D); row(14, 17, 21, TEETH); set(18, 21, D);
+        row(14, 17, 22, D);
+        break;
+      case 'frown': row(14, 17, 21, D); set(13, 22, D); set(18, 22, D); break;
+      default: break;
+    }
+  };
+  const FACES = {
+    calm: ['normal', 'flat', 'smile'],
+    annoyed: ['lidded', 'low', 'flat'],
+    frustrated: ['squint', 'angry', 'grimace'],
+    furious: ['squint', 'angry', 'yell'],
+    shocked: ['wide', 'raised', 'o'],
+    happy: ['happy', 'raised', 'grin'],
+    defeated: ['down', 'sad', 'frown'],
+  };
+  const [eyeStyle, browStyle, mouthStyle] = FACES[expr];
+  const canBlink = ['normal', 'lidded', 'squint', 'down'].includes(eyeStyle);
+  eyes(blink && canBlink ? 'closed' : eyeStyle);
+  brows(browStyle);
+  mouth(mouthStyle);
+
+  // Hair (what's left of it)
+  const visible = new Set();
+  for (const hp of HAIR_PIXELS) {
+    if (hairFrac >= 1 - hp.keep) { set(hp.x, hp.y, hp.col); visible.add(hp.idx); }
+  }
+  if (prevHair && state === 'playing') {
+    let spawned = 0;
+    for (const hp of HAIR_PIXELS) {
+      if (prevHair.has(hp.idx) && !visible.has(hp.idx) && spawned < 6) {
+        hairParticles.push({ x: hp.x, y: hp.y, vy: 1, life: 2.2, seed: Math.random() * 6, col: hp.col });
+        spawned++;
+      }
+    }
+    if (spawned) sfx.pluck();
+  }
+  prevHair = visible;
+  // A few brave last strands
+  if (hairFrac > 0 && hairFrac < 0.22) {
+    for (const [x, y] of [[15, 3], [15, 2], [16, 1], [18, 3], [19, 2], [12, 3], [12, 2], [11, 1]]) set(x, y, HAIR_DK);
+  }
+  // Shiny scalp once enough hair is gone
+  if (hairFrac < 0.6) {
+    for (const [x, y] of [[12, 6], [13, 5], [14, 5]]) if (!visible.has(y * 32 + x)) set(x, y, '#fff1dc');
+  }
+
+  // Dark outline around the figure
+  const out = g.map((r) => r.slice());
+  for (let y = 0; y < 32; y++) {
+    for (let x = 0; x < 32; x++) {
+      if (fig[y][x]) continue;
+      const near = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => fig[y + dy] && fig[y + dy][x + dx]);
+      if (near) out[y][x] = OUTLINE;
+    }
+  }
+
+  // Extras on top: anger mark, sweat, tears
+  const put = (x, y, c) => { if (x >= 0 && y >= 0 && x < 32 && y < 32) out[y][x] = c; };
+  if (expr === 'furious' && Math.floor(gameTime * 4) % 2) {
+    for (const [x, y] of [[25, 2], [27, 2], [26, 3], [25, 4], [27, 4]]) put(x, y, '#e74c3c');
+  }
+  if (expr === 'frustrated' || expr === 'furious' || expr === 'shocked') {
+    const dy = Math.floor(gameTime * 3) % 3;
+    put(26, 7 + dy, '#d6f0ff'); put(25, 8 + dy, '#aee3ff'); put(26, 8 + dy, '#aee3ff');
+    put(25, 9 + dy, '#7fc8f8'); put(26, 9 + dy, '#7fc8f8');
+  }
+  if (expr === 'defeated') {
+    const dy = Math.floor(gameTime * 2) % 4;
+    put(10, 15 + dy, '#7fc8f8'); put(21, 15 + ((dy + 2) % 4), '#7fc8f8');
+  }
+  return out;
+}
+
+function drawPortrait(x, y) {
+  const g = buildFace();
+  for (let j = 0; j < 32; j++) {
+    for (let i = 0; i < 32; i++) {
+      pctx.fillStyle = g[j][i];
+      pctx.fillRect(i, j, 1, 1);
+    }
+  }
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(pcv, x, y, PORTRAIT_SIZE, PORTRAIT_SIZE);
+  for (const p of hairParticles) {
+    ctx.fillStyle = p.col;
+    ctx.fillRect(Math.round(x + p.x * PS), Math.round(y + p.y * PS), PS, PS);
+  }
+}
+
+// ---------- Drawing helpers ----------
 const FONT = '"Press Start 2P", monospace';
 function text(str, x, y, size = 10, color = '#fff', align = 'left', shadow = true) {
   ctx.font = `${size}px ${FONT}`;
@@ -713,6 +1550,20 @@ function text(str, x, y, size = 10, color = '#fff', align = 'left', shadow = tru
   }
   ctx.fillStyle = color;
   ctx.fillText(str, x, y);
+}
+
+function wrapText(str, maxW, size) {
+  ctx.font = `${size}px ${FONT}`;
+  const words = str.split(' ');
+  const lines = [];
+  let line = '';
+  for (const w of words) {
+    const test = line ? `${line} ${w}` : w;
+    if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; }
+    else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
 }
 
 function pixelBox(x, y, w, h, fill, outline = OUTLINE) {
@@ -749,19 +1600,40 @@ function drawSprite(spr, x, y) {
   ctx.drawImage(spr, Math.round(x - spr.width / 2), Math.round(y - spr.height / 2));
 }
 
+function drawKeyCap(key, x, y, s = 7 * P) {
+  pixelBox(x, y, s, s, '#fff');
+  ctx.fillStyle = '#bbb';
+  ctx.fillRect(Math.round(x) + P, Math.round(y + s) - 2 * P, s - 2 * P, P);
+  text(key, x + s / 2 + 1, y + s / 2 - 5, 10, '#222', 'center', false);
+}
+
+function drawBar(x, y, w, h, frac, color, back = '#2b2b38') {
+  pixelBox(x, y, w, h, back, '#000');
+  const inner = Math.max(0, Math.round((w - 2 * P) * clamp(frac, 0, 1)));
+  ctx.fillStyle = color;
+  ctx.fillRect(x + P, y + P, inner, h - 2 * P);
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(x + P, y + P, inner, P);
+}
+
+// ---------- Drawing: play area ----------
 function drawWorkZone() {
   const desk = tables.find((t) => t.teacher);
-  const inside = dist(teacher, desk) < WORK_RANGE;
+  const rolling = fx.chair > 0;
+  const center = rolling ? teacher : desk;
+  const r = WORK_RANGE * run.stats.desk;
+  const inside = rolling || dist(teacher, desk) < r;
   ctx.save();
   ctx.strokeStyle = inside ? 'rgba(46,204,113,0.9)' : 'rgba(46,139,87,0.45)';
+  if (fx.espresso > 0 && inside) ctx.strokeStyle = 'rgba(241,196,15,0.95)';
   ctx.lineWidth = P;
   ctx.setLineDash([P * 2, P * 2]);
-  ctx.lineDashOffset = -gameTime * 12;
+  ctx.lineDashOffset = -gameTime * (fx.espresso > 0 ? 40 : 12);
   ctx.beginPath();
-  ctx.arc(desk.x, desk.y, WORK_RANGE, 0, Math.PI * 2);
+  ctx.arc(center.x, center.y, rolling ? 40 : r, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
-  text('YOUR DESK', desk.x, desk.y + WORK_RANGE + 4, 8, inside ? '#2ecc71' : '#3f6b4a', 'center', false);
+  if (!rolling) text('YOUR DESK', desk.x, desk.y + r + 4, 8, inside ? '#2ecc71' : '#3f6b4a', 'center', false);
 }
 
 function drawCone() {
@@ -769,8 +1641,9 @@ function drawCone() {
   if (pr.phase !== 'walking') return;
   ctx.save();
   const alert = pr.suspicion > 0;
-  ctx.fillStyle = alert ? 'rgba(231,76,60,0.28)' : 'rgba(255,221,87,0.28)';
-  ctx.strokeStyle = alert ? 'rgba(192,57,43,0.8)' : 'rgba(214,170,30,0.8)';
+  const blind = pr.blind > 0;
+  ctx.fillStyle = blind ? 'rgba(180,180,180,0.18)' : alert ? 'rgba(231,76,60,0.28)' : 'rgba(255,221,87,0.28)';
+  ctx.strokeStyle = blind ? 'rgba(150,150,150,0.5)' : alert ? 'rgba(192,57,43,0.8)' : 'rgba(214,170,30,0.8)';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(pr.x, pr.y);
@@ -786,7 +1659,6 @@ function drawPhoneBubble(s) {
   const below = s.seat === 2;
   const ty = below ? s.y + 14 + bob : s.y - 16 + bob;
   const b = bubble(s.x, ty, 8 * P, 9 * P, '#fff', below);
-  // phone icon
   ctx.fillStyle = '#222';
   ctx.fillRect(b.x + 2 * P, b.y + P + P, 4 * P, 6 * P);
   ctx.fillStyle = Math.floor(gameTime * 4) % 2 ? '#5dade2' : '#85c1e9';
@@ -807,11 +1679,12 @@ function drawRowdyBubble(t) {
 
 function drawKeyHint(key, x, y) {
   const s = 7 * P;
-  const yy = y + Math.round(Math.sin(gameTime * 8) * 2);
-  pixelBox(x - s / 2, yy - s / 2, s, s, '#fff');
-  ctx.fillStyle = '#bbb';
-  ctx.fillRect(Math.round(x - s / 2) + P, Math.round(yy + s / 2) - 2 * P, s - 2 * P, P);
-  text(key, x + 1, yy - 5, 10, '#222', 'center', false);
+  drawKeyCap(key, x - s / 2, y - s / 2 + Math.round(Math.sin(gameTime * 8) * 2), s);
+}
+
+function teacherSprite() {
+  const h = run.hair;
+  return teacherSprites[h <= 0 ? 0 : h < 30 ? 1 : h < 65 ? 2 : 3];
 }
 
 function drawEntities() {
@@ -819,6 +1692,7 @@ function drawEntities() {
   for (const s of students) list.push({ y: s.y, kind: 'student', s });
   list.push({ y: teacher.y, kind: 'teacher' });
   if (principal.phase === 'walking') list.push({ y: principal.y, kind: 'principal' });
+  if (ta) list.push({ y: ta.y, kind: 'ta' });
   list.sort((a, b) => a.y - b.y);
 
   for (const e of list) {
@@ -841,41 +1715,75 @@ function drawEntities() {
         ctx.fillRect(Math.round(s.x - P), Math.round(s.y + 2 * P + 1), 2 * P, 2 * P);
       }
     } else if (e.kind === 'teacher') {
+      const spr = teacherSprite();
+      if (fx.sprint > 0 && teacher.moving) {
+        ctx.globalAlpha = 0.25;
+        drawSprite(spr, teacher.x - teacher.dir.x * 18, teacher.y - 8 - teacher.dir.y * 18);
+        ctx.globalAlpha = 0.45;
+        drawSprite(spr, teacher.x - teacher.dir.x * 9, teacher.y - 8 - teacher.dir.y * 9);
+        ctx.globalAlpha = 1;
+      }
+      if (fx.chair > 0) {
+        ctx.fillStyle = OUTLINE; ctx.fillRect(Math.round(teacher.x - 14), Math.round(teacher.y + 2), 28, 18);
+        ctx.fillStyle = '#2c3e50'; ctx.fillRect(Math.round(teacher.x - 11), Math.round(teacher.y + 5), 22, 12);
+      }
       const bob = teacher.moving && Math.floor(teacher.walkT * 8) % 2 ? -P : 0;
-      drawSprite(teacherSprite, teacher.x, teacher.y - 8 + bob);
+      drawSprite(spr, teacher.x, teacher.y - 8 + bob);
+    } else if (e.kind === 'ta') {
+      const bob = ta.moving && Math.floor(ta.walkT * 8) % 2 ? -P : 0;
+      if (ta.t < 2 && Math.floor(gameTime * 10) % 2) continue; // flicker before leaving
+      drawSprite(taSprite, ta.x, ta.y - 8 + bob);
+      text('TA', ta.x, ta.y + 16, 8, '#e67e22', 'center');
     } else {
       const pr = principal;
-      const bob = pr.pause <= 0 && Math.floor(pr.walkT * 7) % 2 ? -P : 0;
+      const bob = pr.pause <= 0 && pr.hold <= 0 && Math.floor(pr.walkT * 7) % 2 ? -P : 0;
       drawSprite(principalSprite, pr.x, pr.y - 8 + bob);
     }
   }
+}
+
+function drawChicken() {
+  if (!chicken) return;
+  if (chicken.landed) {
+    const wob = Math.round(Math.sin(gameTime * 10));
+    drawSprite(chickenSprite, chicken.x + wob, chicken.y);
+    if (chicken.noticed && Math.floor(gameTime * 3) % 2) text('SQUEAK', chicken.x, chicken.y - 30, 8, '#e67e22', 'center');
+    return;
+  }
+  const f = clamp(chicken.fly, 0, 1);
+  const x = chicken.sx + (chicken.x - chicken.sx) * f;
+  const y = chicken.sy + (chicken.y - chicken.sy) * f - Math.sin(Math.PI * f) * 70;
+  drawSprite(chickenSprite, x, y);
 }
 
 function drawOverheads() {
   // Problem bubbles
   for (const t of tables) if (t.rowdy) drawRowdyBubble(t);
   for (const s of students) if (s.phone) drawPhoneBubble(s);
+  drawChicken();
 
   // Key hints for whatever the teacher can deal with right now
   if (state === 'playing') {
-    let phoneTarget = null, pd = PHONE_RANGE;
-    for (const s of students) if (s.phone && dist(teacher, s) < pd) { pd = dist(teacher, s); phoneTarget = s; }
-    let rowdyTarget = null, rd = SHUSH_RANGE;
-    for (const t of tables) if (t.rowdy && dist(teacher, t) < rd) { rd = dist(teacher, t); rowdyTarget = t; }
+    const phoneTarget = nearestPhone(teacher, PHONE_RANGE * run.stats.reach);
+    const rowdyTarget = nearestRowdy(teacher, SHUSH_RANGE * run.stats.shush);
     if (phoneTarget) drawKeyHint('A', phoneTarget.x + 22, phoneTarget.y - 30);
     if (rowdyTarget) drawKeyHint('S', rowdyTarget.x + 44, rowdyTarget.y - 30);
   }
 
-  // Teacher speech
-  if (speech) {
+  // Speech bubbles
+  const pr = principal;
+  for (const s of speeches) {
+    const who = s.who;
+    if (who === ta && !ta) continue;
+    if (who === pr && pr.phase !== 'walking') continue;
     ctx.font = `10px ${FONT}`;
-    const w = Math.max(10 * P, Math.ceil(ctx.measureText(speech.text).width / P) * P + 6 * P);
-    const b = bubble(teacher.x, teacher.y - 26, w, 8 * P, '#fff');
-    text(speech.text, b.x + w / 2, b.y + 7, 10, '#222', 'center', false);
+    const w = Math.max(10 * P, Math.ceil(ctx.measureText(s.text).width / P) * P + 6 * P);
+    const bx = clamp(who.x, w / 2 + 8, W - w / 2 - 8);
+    const b = bubble(bx, who.y - (who === pr ? 30 : 26), w, 8 * P, '#fff');
+    text(s.text, b.x + w / 2, b.y + 7, 10, '#222', 'center', false);
   }
 
   // Principal's reaction
-  const pr = principal;
   if (pr.phase === 'walking' && (pr.suspicion > 0 || state === 'caught')) {
     const isCaught = state === 'caught';
     const b = bubble(pr.x, pr.y - 30, 8 * P, 9 * P, isCaught ? '#e74c3c' : '#fff');
@@ -893,13 +1801,24 @@ function drawOverheads() {
   }
 }
 
-function drawBar(x, y, w, h, frac, color, back = '#2b2b38') {
-  pixelBox(x, y, w, h, back, '#000');
-  const inner = Math.max(0, Math.round((w - 2 * P) * clamp(frac, 0, 1)));
-  ctx.fillStyle = color;
-  ctx.fillRect(x + P, y + P, inner, h - 2 * P);
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
-  ctx.fillRect(x + P, y + P, inner, P);
+function drawEffectStrip() {
+  const labels = [];
+  if (fx.quiz > 0) labels.push([`POP QUIZ ${Math.ceil(fx.quiz)}`, '#9b59b6']);
+  if (fx.wifi > 0) labels.push([`WI-FI DOWN ${Math.ceil(fx.wifi)}`, '#2980b9']);
+  if (fx.espresso > 0) labels.push([`ESPRESSO x3 ${Math.ceil(fx.espresso)}`, '#8e5a2b']);
+  if (fx.chair > 0) labels.push([`ROLLING ${Math.ceil(fx.chair)}`, '#2c3e50']);
+  if (fx.sprint > 0) labels.push([`SPRINT ${Math.ceil(fx.sprint)}`, '#d4ac0d']);
+  if (fx.stress > 0) labels.push([`ZEN ${Math.ceil(fx.stress)}`, '#27ae60']);
+  if (ta) labels.push([`TA ${Math.ceil(ta.t)}`, '#e67e22']);
+  if (!labels.length) return;
+  ctx.font = `8px ${FONT}`;
+  const widths = labels.map(([s]) => Math.ceil(ctx.measureText(s).width) + 18);
+  let x = W / 2 - (widths.reduce((a, b) => a + b, 0) + (labels.length - 1) * 6) / 2;
+  labels.forEach(([s, col], i) => {
+    pixelBox(x, H - 34, widths[i], 22, col, '#000');
+    text(s, x + widths[i] / 2, H - 27, 8, '#fff', 'center', false);
+    x += widths[i] + 6;
+  });
 }
 
 function drawHUD() {
@@ -912,7 +1831,7 @@ function drawHUD() {
   text(`HANDLED ${handled}`, 14, 38, 8, '#aaa');
 
   text('GRADING', 150, 12, 8, '#9be7b0');
-  drawBar(150, 26, 260, 24, work / cfg.work, '#2ecc71');
+  drawBar(150, 26, 260, 24, work / cfg.work, fx.espresso > 0 ? '#f1c40f' : '#2ecc71');
   text(`${Math.floor((work / cfg.work) * 100)}%`, 280, 32, 8, '#fff', 'center');
 
   text('CHAOS', 440, 12, 8, '#ff9a8b');
@@ -924,7 +1843,6 @@ function drawHUD() {
   text('BELL IN', 690, 12, 8, '#aaa');
   text(tStr, 690, 28, 16, timeLeft < 15 && Math.floor(gameTime * 4) % 2 ? '#e74c3c' : '#fff');
 
-  // Principal status
   const pr = principal;
   let status = 'ALL CLEAR', col = '#7f8c8d';
   if (pr.phase === 'warning') { status = 'INCOMING!'; col = Math.floor(gameTime * 6) % 2 ? '#e74c3c' : '#ffd166'; }
@@ -955,7 +1873,7 @@ function drawPrincipalWarning() {
 }
 
 function overlay(lines, accent = '#ffd166') {
-  ctx.fillStyle = 'rgba(10,8,16,0.78)';
+  ctx.fillStyle = 'rgba(10,8,16,0.8)';
   ctx.fillRect(0, 0, W, H);
   let y = H / 2 - (lines.length * 30) / 2;
   for (const l of lines) {
@@ -965,34 +1883,87 @@ function overlay(lines, accent = '#ffd166') {
   }
 }
 
+function drawCard(x, y, opts) {
+  const { selected, chosen, dim, iconSpr, name, tag, tagCol, desc, meta, num } = opts;
+  const lift = selected ? -6 : 0;
+  y += lift;
+  if (selected) pixelBox(x - 4, y - 4, CARD_W + 8, CARD_H + 8, '#ffd166', '#000');
+  if (chosen) pixelBox(x - 4, y - 4, CARD_W + 8, CARD_H + 8, '#2ecc71', '#000');
+  pixelBox(x, y, CARD_W, CARD_H, dim ? '#1f1c28' : '#2f2b3d', '#000');
+  ctx.globalAlpha = dim ? 0.4 : 1;
+  pixelBox(x + 10, y + 10, 40, 40, '#4a4560', '#000');
+  ctx.drawImage(iconSpr, x + 15, y + 15);
+  text(name, x + 60, y + 14, 10, '#fff');
+  text(tag, x + 60, y + 32, 8, tagCol);
+  wrapText(desc, CARD_W - 28, 8).slice(0, 5).forEach((line, i) => text(line, x + 14, y + 64 + i * 16, 8, '#ddd', 'left', false));
+  if (meta) text(meta, x + 14, y + CARD_H - 20, 8, '#85c1e9', 'left', false);
+  drawKeyCap(String(num), x + CARD_W - 30, y + 8, 6 * P);
+  ctx.globalAlpha = 1;
+}
+
+function drawUpgrade() {
+  ctx.fillStyle = 'rgba(10,8,16,0.88)';
+  ctx.fillRect(0, 0, W, H);
+  text(`LEVEL ${level} COMPLETE!`, W / 2, 22, 20, '#2ecc71', 'center');
+  const hairMsg = offer.regrew > 0 ? `Mr. Laporte regrew ${offer.regrew} hair over the weekend.` : 'Mr. Laporte made it through another one.';
+  text(hairMsg, W / 2, 56, 8, '#e6c35c', 'center');
+
+  const labels = ['STEP 1: PICK A STAT UPGRADE', 'STEP 2: PICK AN ITEM'];
+  for (let row = 0; row < 2; row++) {
+    const active = offer.step === row;
+    text(labels[row], CARD_X0, CARD_ROW_Y[row] - 28, 10, active ? '#ffd166' : '#777');
+  }
+  offer.stats.forEach((u, i) => {
+    const picks = run.statPicks[u.id] || 0;
+    drawCard(CARD_X0 + i * (CARD_W + CARD_GAP), CARD_ROW_Y[0], {
+      selected: offer.step === 0 && offer.sel === i,
+      chosen: offer.pickedStat === i,
+      dim: offer.step === 1 && offer.pickedStat !== i,
+      iconSpr: ICONS[u.icon], name: u.name,
+      tag: picks ? `STAT  (OWNED x${picks})` : 'STAT', tagCol: '#9be7b0',
+      desc: u.desc, meta: '', num: i + 1,
+    });
+  });
+  offer.items.forEach((c, i) => {
+    const slot = c.owned ? run.items.indexOf(c.owned) + 1 : run.items.length + 1;
+    drawCard(CARD_X0 + i * (CARD_W + CARD_GAP), CARD_ROW_Y[1], {
+      selected: offer.step === 1 && offer.sel === i,
+      chosen: false,
+      dim: offer.step === 0,
+      iconSpr: ICONS[c.def.id], name: c.def.name,
+      tag: c.owned ? `UPGRADE TO LV${c.level}  (KEY ${slot})` : `NEW ITEM  (KEY ${slot})`,
+      tagCol: c.owned ? '#ffd166' : '#ff9ff3',
+      desc: c.def.desc(c.level, c.def), meta: itemMeta(c.def, c.level), num: i + 1,
+    });
+  });
+  if (!offer.items.length && offer.step === 1) text('No items left to offer!', W / 2, CARD_ROW_Y[1] + 60, 10, '#aaa', 'center');
+  text('ARROWS + ENTER, number keys, or click to choose', W / 2, 600, 8, '#aaa', 'center');
+  text(`Next up: level ${level + 1}. More trouble, more grading, more principal.`, W / 2, 624, 8, '#777', 'center');
+}
+
 function drawTitle() {
-  // Draw a calm, empty-ish study hall behind the title
   ctx.drawImage(bgCanvas, 0, 0);
   drawEntities();
   drawHUD();
   overlay([
     ['STUDY HALL', 32, 'accent'],
     ['SIMULATOR', 32, 'accent'],
+    ['starring MR. LAPORTE', 10, '#e6c35c'],
     '',
-    ['You are on cafeteria study hall duty.', 10],
     ['Stand by YOUR DESK to grade papers.', 10],
     ['Fill the GRADING bar before the bell rings!', 10],
-    '',
-    ['Phone bubble  -> walk to the student, press A', 10, '#85c1e9'],
-    ['#@! bubble    -> walk to the table, press S', 10, '#ff9a8b'],
-    '',
-    ['Too much trouble fills the CHAOS meter.', 10],
-    ["If the PRINCIPAL's vision cone sees a phone", 10, '#ff7675'],
-    ["or a rowdy table... you're in trouble.", 10, '#ff7675'],
-    '',
-    ['ARROWS move   A phone   S shush   P pause', 10, '#aaa'],
+    ['Phone bubble -> walk over and press A', 10, '#85c1e9'],
+    ['#@! bubble   -> walk over and press S', 10, '#ff9a8b'],
+    ['Chaos makes Mr. Laporte lose his HAIR.', 10, '#e6c35c'],
+    ['No hair left, or the PRINCIPAL sees trouble:', 10, '#ff7675'],
+    ['the run is over.', 10, '#ff7675'],
+    ['Beat a level: pick a stat AND an item (keys 1-6).', 10, '#9be7b0'],
     '',
     [Math.floor(gameTime * 2) % 2 ? 'PRESS ENTER TO START' : '', 14, '#fff'],
   ]);
 }
 
-function draw() {
-  ctx.clearRect(0, 0, W, H);
+function drawPlayArea() {
   if (state === 'title') { drawTitle(); return; }
 
   ctx.drawImage(bgCanvas, 0, 0);
@@ -1000,34 +1971,112 @@ function draw() {
   drawCone();
   drawEntities();
   drawOverheads();
+  drawEffectStrip();
   drawHUD();
   drawPrincipalWarning();
 
   if (state === 'paused') {
     overlay([['PAUSED', 24, 'accent'], '', ['Press P or ENTER to resume', 10]]);
-  } else if (state === 'won') {
-    overlay([
-      ['GRADING DONE!', 24, '#2ecc71'],
-      '',
-      [`Level ${level} complete.`, 12],
-      [`Problems handled: ${handled}`, 10, '#aaa'],
-      '',
-      ['Next level: more students acting up,', 10],
-      ['and the principal visits more often.', 10],
-      '',
-      ['PRESS ENTER FOR NEXT LEVEL', 12, '#fff'],
-    ], '#2ecc71');
+  } else if (state === 'upgrade') {
+    drawUpgrade();
   } else if (state === 'lost') {
     overlay([
-      ['YOU LOST', 24, '#e74c3c'],
+      ['RUN OVER', 24, '#e74c3c'],
       '',
       [loseReason, 10],
       '',
-      [`Reached level ${level}  (best: ${bestLevel})`, 10, '#aaa'],
+      [`Made it to level ${level}`, 12, '#fff'],
+      [`Problems handled this run: ${run.handled}`, 10, '#aaa'],
+      [`Items: ${run.items.length}   Stat upgrades: ${Object.values(run.statPicks).reduce((a, b) => a + b, 0)}`, 10, '#aaa'],
+      [`Best: cleared level ${bestLevel}`, 10, '#ffd166'],
       '',
-      ['ENTER retry level    R restart from level 1', 10, '#fff'],
+      ['PRESS ENTER FOR A NEW RUN', 12, '#fff'],
     ]);
   }
+}
+
+// ---------- Drawing: side panel ----------
+function drawItemSlot(i, y) {
+  const it = run.items[i];
+  const x = 10, w = PANEL_W - 20, h = 42;
+  const flash = it && it.flash > 0;
+  pixelBox(x, y, w, h, flash ? '#4d4766' : it ? '#2f2b3d' : '#1c1a24', '#000');
+  ctx.globalAlpha = it ? 1 : 0.35;
+  drawKeyCap(String(i + 1), x + 8, y + 10, 6 * P);
+  ctx.globalAlpha = 1;
+  if (!it) {
+    text('- empty -', x + 44, y + 17, 8, '#555', 'left', false);
+    return;
+  }
+  ctx.drawImage(ICONS[it.def.id], x + 34, y + 6);
+  const name = it.level > 1 ? `${it.def.name} ${it.level}` : it.def.name;
+  text(name, x + 70, y + 8, 8, '#fff', 'left', false);
+
+  const bx = x + 70, by = y + 24, bw = w - 80;
+  const active = itemActiveTime(it);
+  const d = it.def;
+  if (active > 0) {
+    const max = d.id === 'ta' && ta ? ta.max : durAt(d, it.level);
+    drawBar(bx, by, bw, 12, active / max, '#2ecc71');
+    text('ACTIVE', bx + bw / 2, by + 2, 8, '#fff', 'center', false);
+  } else if (d.passive) {
+    text(it.usesLeft > 0 ? 'AUTO: READY' : 'AUTO: USED', bx, by + 2, 8, it.usesLeft > 0 ? '#2ecc71' : '#e74c3c', 'left', false);
+  } else if (it.cdLeft > 0) {
+    drawBar(bx, by, bw, 12, 1 - it.cdLeft / it.cdMax, '#7f8c8d');
+    text(`${Math.ceil(it.cdLeft)}s`, bx + bw / 2, by + 2, 8, '#fff', 'center', false);
+  } else if (d.uses !== undefined) {
+    text(it.usesLeft > 0 ? `READY  (${it.usesLeft} LEFT)` : 'USED UP', bx, by + 2, 8, it.usesLeft > 0 ? '#2ecc71' : '#e74c3c', 'left', false);
+  } else {
+    text('READY', bx, by + 2, 8, '#2ecc71', 'left', false);
+  }
+}
+
+function drawPanel() {
+  ctx.fillStyle = '#23202d';
+  ctx.fillRect(0, 0, PANEL_W, H);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(PANEL_W - P, 0, P, H);
+
+  text('MR. LAPORTE', PANEL_W / 2, 8, 12, '#ffd166', 'center');
+
+  // Portrait in a wooden frame
+  const px = (PANEL_W - PORTRAIT_SIZE) / 2, py = 35;
+  pixelBox(px - 9, py - 9, PORTRAIT_SIZE + 18, PORTRAIT_SIZE + 18, '#8a5a2b', '#000');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(px - 3, py - 3, PORTRAIT_SIZE + 6, PORTRAIT_SIZE + 6);
+  drawPortrait(px, py);
+
+  // Hair meter
+  const hair = run.hair;
+  text(fx.stress > 0 ? 'HAIR (ZEN)' : 'HAIR', 14, 276, 8, '#e6c35c');
+  text(`${Math.ceil(hair)}%`, PANEL_W - 14, 276, 8, '#fff', 'right');
+  const hairCol = hair > 60 ? '#8b5a2b' : hair > 30 ? '#d68910' : (Math.floor(gameTime * 4) % 2 ? '#e74c3c' : '#c0392b');
+  drawBar(14, 290, PANEL_W - 28, 20, hair / 100, hairCol);
+
+  // Stats
+  text('STATS', 14, 320, 8, '#9be7b0');
+  const lines = statLines();
+  if (!lines.length) text('No upgrades yet', 14, 338, 8, '#555', 'left', false);
+  lines.slice(0, 14).forEach((l, i) => {
+    text(l, 14 + (i % 2) * 140, 338 + Math.floor(i / 2) * 13, 8, '#ddd', 'left', false);
+  });
+
+  // Items
+  text('ITEMS', 14, 434, 8, '#ff9ff3');
+  text('keys 1-6', PANEL_W - 14, 434, 8, '#666', 'right', false);
+  for (let i = 0; i < MAX_ITEMS; i++) drawItemSlot(i, 450 + i * 44);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawPanel();
+  ctx.save();
+  ctx.translate(PANEL_W, 0);
+  ctx.beginPath();
+  ctx.rect(0, 0, W, H);
+  ctx.clip();
+  drawPlayArea();
+  ctx.restore();
 }
 
 // ---------- Main loop ----------
@@ -1040,6 +2089,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+newRun();
 setupLevel(1);
 canvas.focus();
 requestAnimationFrame(frame);
